@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>차성겸 — Data & AI Engineering Portfolio</title>
+<meta name="description" content="차성겸(Cha Seong-gyeom) — AI·빅데이터공학 3학년. 데이터 파이프라인과 웹 도구를 만드는 개발자의 프로젝트 관측소.">
+<meta name="theme-color" content="#05070a">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2305070a'/%3E%3Ccircle cx='16' cy='16' r='3' fill='%236ee7ff'/%3E%3Ccircle cx='7' cy='9' r='1.6' fill='%23ffb454'/%3E%3Ccircle cx='25' cy='11' r='1.6' fill='%23ffb454'/%3E%3Ccircle cx='25' cy='24' r='1.6' fill='%23ffb454'/%3E%3Cpath d='M16 16 7 9 M16 16 25 11 M16 16 9 24' stroke='%236ee7ff' stroke-width='1' opacity='.6'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<a class="skip-link" href="#main">본문 바로가기</a>
+<div class="scroll-progress" aria-hidden="true"><span id="scroll-progress-bar"></span></div>
+
+<header class="site-header">
+  <div class="wrap header-inner">
+    <a class="brand" href="#top" aria-label="맨 위로 이동">
+      <span class="brand-mark" aria-hidden="true">CSK</span>
+      <span class="brand-name">차성겸</span>
+    </a>
+    <nav class="site-nav" aria-label="주요 메뉴">
+      <a href="#about">소개</a>
+      <a href="#graph">활동 그래프</a>
+      <a href="#projects">프로젝트</a>
+      <a href="#stack">스택</a>
+      <a href="#contact">연락</a>
+    </nav>
+    <div class="status-readout" aria-hidden="true">
+      <span class="status-dot"></span>
+      <span id="clock">--:--:--</span>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+
+  <section id="top" class="hero">
+    <div class="wrap hero-inner">
+      <p class="eyebrow">// AI &amp; Big Data Engineering · 3rd-year</p>
+      <h1>데이터를 읽고,<br>도구로 옮기는 사람<span class="cursor" aria-hidden="true">_</span></h1>
+      <p class="hero-lede">
+        차성겸입니다. 데이터의 품질과 흐름을 다루는 문제에 관심이 많고,
+        분석 결과를 누구나 쓸 수 있는 웹 도구로 만드는 작업을 즐깁니다.
+        이 페이지는 그 결과물들을 모아둔 개인 관측소입니다.
+      </p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="#projects">프로젝트 보기</a>
+        <a class="btn btn-ghost" href="https://github.com/csk200387" target="_blank" rel="noreferrer">GitHub 프로필</a>
+      </div>
+      <dl class="hero-stats" aria-label="요약 지표">
+        <div class="hero-stat">
+          <dt>Repositories</dt>
+          <dd id="stat-repos">5</dd>
+        </div>
+        <div class="hero-stat">
+          <dt>Deployed</dt>
+          <dd id="stat-deployed">4</dd>
+        </div>
+        <div class="hero-stat">
+          <dt>Focus</dt>
+          <dd>Data&nbsp;Quality</dd>
+        </div>
+      </dl>
+    </div>
+  </section>
+
+  <section id="graph" class="section" aria-labelledby="graph-title">
+    <div class="wrap">
+      <h2 id="graph-title"><span class="section-index">01</span> GitHub 활동 그래프</h2>
+      <p class="section-lede">csk200387의 공개 저장소를 실시간으로 불러와 관계망으로 그립니다. 노드 크기는 star 수, 밝기는 최근 활동 여부를 나타냅니다.</p>
+      <div class="graph-panel">
+        <svg id="constellation" viewBox="0 0 800 440" role="img" aria-labelledby="graph-desc"></svg>
+        <p id="graph-desc" class="graph-caption">불러오는 중…</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="about" class="section" aria-labelledby="about-title">
+    <div class="wrap about-grid">
+      <div>
+        <h2 id="about-title"><span class="section-index">02</span> 소개</h2>
+        <p class="section-lede">
+          AI·빅데이터공학을 전공하며 데이터의 신뢰성과 시각화에 집중하고 있습니다.
+          원시 데이터가 의사결정에 쓰이기까지의 과정—수집, 정제, 검증, 시각화—중에서도
+          특히 데이터 품질 검증과 개인정보를 다루는 방식에 관심이 있습니다.
+        </p>
+        <p class="section-lede">
+          만든 도구는 대부분 <strong>local-first</strong>를 지향합니다.
+          사용자의 데이터를 서버로 보내지 않고 브라우저 안에서 처리해,
+          누구나 자신의 데이터를 안전하게 들여다볼 수 있게 만드는 방식을 선호합니다.
+        </p>
+      </div>
+      <ul class="focus-list" aria-label="관심 분야">
+        <li><span class="focus-tag">데이터 품질</span>결측치·이상치·스키마 검증</li>
+        <li><span class="focus-tag">프라이버시</span>로컬 우선 처리, 서버 미전송</li>
+        <li><span class="focus-tag">시각화</span>탐색적 데이터 대시보드</li>
+        <li><span class="focus-tag">웹 도구</span>빌드 없는 정적 배포</li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="projects" class="section" aria-labelledby="projects-title">
+    <div class="wrap">
+      <h2 id="projects-title"><span class="section-index">03</span> 프로젝트</h2>
+      <p class="section-lede">카드를 클릭하면 상세 정보와 실시간 GitHub 지표를 볼 수 있습니다.</p>
+      <div class="project-filters" role="group" aria-label="프로젝트 유형 필터">
+        <button class="filter-button is-selected" type="button" data-filter="all" aria-pressed="true">전체 <span>05</span></button>
+        <button class="filter-button" type="button" data-filter="data" aria-pressed="false">데이터 <span>03</span></button>
+        <button class="filter-button" type="button" data-filter="tool" aria-pressed="false">도구 <span>02</span></button>
+      </div>
+      <div id="project-grid" class="project-grid"></div>
+    </div>
+  </section>
+
+  <section id="stack" class="section" aria-labelledby="stack-title">
+    <div class="wrap">
+      <h2 id="stack-title"><span class="section-index">04</span> 스택</h2>
+      <p class="section-lede">주로 사용하는 언어와 도구입니다.</p>
+      <div class="stack-groups" id="stack-groups"></div>
+    </div>
+  </section>
+
+  <section id="contact" class="section section-contact" aria-labelledby="contact-title">
+    <div class="wrap">
+      <h2 id="contact-title"><span class="section-index">05</span> 연락</h2>
+      <p class="section-lede">협업이나 질문은 GitHub 프로필을 통해 남겨주세요.</p>
+      <div class="contact-links">
+        <a class="btn btn-primary" href="https://github.com/csk200387" target="_blank" rel="noreferrer">GitHub 프로필</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <p>© <span id="year"></span> Cha Seong-gyeom. Built with plain HTML/CSS/JS.</p>
+  </div>
+</footer>
+
+<dialog id="project-dialog" class="project-dialog" aria-labelledby="dialog-title">
+  <form method="dialog" class="dialog-form">
+    <button type="submit" class="dialog-close" aria-label="닫기">✕</button>
+    <div id="dialog-body"></div>
+  </form>
+</dialog>
+
+<script src="js/main.js"></script>
+</body>
+</html>
