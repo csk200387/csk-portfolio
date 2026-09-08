@@ -38,6 +38,13 @@
   </div>
 </header>
 
+<nav class="mobile-dock" aria-label="모바일 빠른 메뉴">
+  <a href="#top" data-section="top"><span aria-hidden="true">↑</span><span>홈</span></a>
+  <a href="#story" data-section="story"><span aria-hidden="true">◇</span><span>스토리</span></a>
+  <a href="#projects" data-section="projects"><span aria-hidden="true">▦</span><span>프로젝트</span></a>
+  <a href="#contact" data-section="contact"><span aria-hidden="true">↗</span><span>연락</span></a>
+</nav>
+
 <main id="main">
 
   <section id="top" class="hero">
@@ -73,7 +80,7 @@
       <h2 id="collage-title"><span class="section-index">01</span> 흩어진 신호들</h2>
       <p class="section-lede">데이터가 도구가 되기 전 거치는 장면들 — 막대, 노드, 타임라인, 그리드, 패널이 뒤섞여 있습니다.</p>
     </div>
-    <div class="collage-grid" id="collage-grid">
+    <div class="collage-grid" id="collage-grid" tabindex="0" aria-label="데이터 시각화 장면, 가로로 스크롤">
       <figure class="scene-card" data-depth="0.5" style="--rot:-3deg">
         <svg viewBox="0 0 160 100" aria-hidden="true">
           <rect x="10" y="55" width="16" height="35" rx="3" fill="#5be8ff" fill-opacity=".85"/>
@@ -141,6 +148,11 @@
         <figcaption>다시 도구로</figcaption>
       </figure>
     </div>
+    <div class="rail-meta collage-rail-meta" aria-hidden="true">
+      <span>SWIPE</span>
+      <span class="rail-progress"><i id="collage-progress"></i></span>
+      <span id="collage-counter">01 / 05</span>
+    </div>
   </section>
 
   <section id="story" class="section story-section" aria-labelledby="story-title">
@@ -153,10 +165,10 @@
         <svg id="story-svg" viewBox="0 0 800 480" role="img" aria-labelledby="story-caption"></svg>
         <div class="story-caption-wrap">
           <p id="story-caption" class="story-caption">흩어진 데이터에는 아직 형태가 없습니다.</p>
-          <div class="story-dots" aria-hidden="true">
-            <span class="is-active" data-stage="0"></span>
-            <span data-stage="1"></span>
-            <span data-stage="2"></span>
+          <div class="story-dots" role="tablist" aria-label="데이터 변환 단계">
+            <button class="is-active" type="button" role="tab" aria-selected="true" data-stage="0"><span class="visually-hidden">원시 데이터</span></button>
+            <button type="button" role="tab" aria-selected="false" data-stage="1"><span class="visually-hidden">정제된 데이터</span></button>
+            <button type="button" role="tab" aria-selected="false" data-stage="2"><span class="visually-hidden">완성된 도구</span></button>
           </div>
         </div>
         <p id="story-live" class="visually-hidden" aria-live="polite"></p>
@@ -209,6 +221,14 @@
         <button class="filter-button" type="button" data-filter="tool" aria-pressed="false">도구 <span>03</span></button>
       </div>
       <div id="project-deck" class="project-deck"></div>
+      <div class="project-carousel-controls" aria-label="프로젝트 캐러셀 컨트롤">
+        <button id="project-prev" type="button" aria-label="이전 프로젝트">←</button>
+        <div class="project-carousel-state" aria-live="polite">
+          <span id="project-counter">01 / 05</span>
+          <span class="rail-progress" aria-hidden="true"><i id="project-progress"></i></span>
+        </div>
+        <button id="project-next" type="button" aria-label="다음 프로젝트">→</button>
+      </div>
     </div>
   </section>
 

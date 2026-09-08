@@ -75,6 +75,9 @@
   const savedMotion = localStorage.getItem("motion");
   let motionOff = savedMotion ? savedMotion === "off" : prefersReduced;
   const hasHover = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+  const compactStoryQuery = window.matchMedia(
+    "(max-width: 640px), (max-height: 520px) and (orientation: landscape)"
+  );
 
   const body = document.body;
   const motionToggle = document.getElementById("motion-toggle");
@@ -149,10 +152,75 @@
   );
   document.querySelectorAll(".reveal").forEach((el) => revealObserver.observe(el));
 
+  // Mobile dock — keep the current section visible without a menu overlay.
+  const mobileDockLinks = [...document.querySelectorAll(".mobile-dock a")];
+  const updateMobileDock = () => {
+    if (!mobileDockLinks.length) return;
+    const marker = window.scrollY + window.innerHeight * 0.55;
+    const activeLink = mobileDockLinks.reduce((current, link) => {
+      const section = document.getElementById(link.dataset.section);
+      return section && section.offsetTop <= marker ? link : current;
+    }, mobileDockLinks[0]);
+    mobileDockLinks.forEach((link) => {
+      const active = link === activeLink;
+      link.classList.toggle("is-active", active);
+      if (active) link.setAttribute("aria-current", "location");
+      else link.removeAttribute("aria-current");
+    });
+  };
+
   // -------------------------------------------------------
   // Project cards — cinematic scroll-stacked scenes
   // -------------------------------------------------------
   const deck = document.getElementById("project-deck");
+  const projectCounter = document.getElementById("project-counter");
+  const projectProgress = document.getElementById("project-progress");
+  const projectPrev = document.getElementById("project-prev");
+  const projectNext = document.getElementById("project-next");
+
+  const closestRailIndex = (rail, items) => {
+    if (!items.length) return 0;
+    const center = rail.getBoundingClientRect().left + rail.clientWidth / 2;
+    return items.reduce((best, item, index) => {
+      const rect = item.getBoundingClientRect();
+      const distance = Math.abs(rect.left + rect.width / 2 - center);
+      return distance < best.distance ? { index, distance } : best;
+    }, { index: 0, distance: Infinity }).index;
+  };
+
+  const syncProjectCarousel = () => {
+    const items = [...deck.querySelectorAll(".scene-slot")];
+    const index = closestRailIndex(deck, items);
+    const total = items.length || 1;
+    projectCounter.textContent = `${String(index + 1).padStart(2, "0")} / ${String(total).padStart(2, "0")}`;
+    projectProgress.style.setProperty("--rail-progress", String((index + 1) / total));
+    projectPrev.disabled = index === 0;
+    projectNext.disabled = index === total - 1;
+  };
+
+  const moveProject = (direction) => {
+    const items = [...deck.querySelectorAll(".scene-slot")];
+    if (!items.length) return;
+    const current = closestRailIndex(deck, items);
+    const target = items[Math.max(0, Math.min(items.length - 1, current + direction))];
+    const railRect = deck.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    deck.scrollTo({
+      left: deck.scrollLeft + targetRect.left - railRect.left - (deck.clientWidth - targetRect.width) / 2,
+      behavior: motionOff ? "auto" : "smooth",
+    });
+  };
+
+  let projectScrollFrame = null;
+  deck.addEventListener("scroll", () => {
+    if (projectScrollFrame) return;
+    projectScrollFrame = requestAnimationFrame(() => {
+      projectScrollFrame = null;
+      syncProjectCarousel();
+    });
+  }, { passive: true });
+  projectPrev.addEventListener("click", () => moveProject(-1));
+  projectNext.addEventListener("click", () => moveProject(1));
 
   const SCENE_TONE = {
     "tabular-lens": "lime",
@@ -262,6 +330,10 @@
     }).join("");
 
     deck.querySelectorAll(".project-scene").forEach((scene) => sceneObserver.observe(scene));
+    requestAnimationFrame(() => {
+      deck.scrollLeft = 0;
+      syncProjectCarousel();
+    });
   };
   renderProjectScenes();
 
@@ -381,10 +453,27 @@
   // -------------------------------------------------------
   const collageGrid = document.getElementById("collage-grid");
   const sceneCards = [...collageGrid.querySelectorAll(".scene-card")];
+  const collageCounter = document.getElementById("collage-counter");
+  const collageProgress = document.getElementById("collage-progress");
   sceneCards.forEach((card, i) => {
     card.style.transitionDelay = `${i * 70}ms`;
     revealObserver.observe(card);
   });
+
+  const syncCollageRail = () => {
+    const index = closestRailIndex(collageGrid, sceneCards);
+    collageCounter.textContent = `${String(index + 1).padStart(2, "0")} / ${String(sceneCards.length).padStart(2, "0")}`;
+    collageProgress.style.setProperty("--rail-progress", String((index + 1) / sceneCards.length));
+  };
+  let collageScrollFrame = null;
+  collageGrid.addEventListener("scroll", () => {
+    if (collageScrollFrame) return;
+    collageScrollFrame = requestAnimationFrame(() => {
+      collageScrollFrame = null;
+      syncCollageRail();
+    });
+  }, { passive: true });
+  syncCollageRail();
 
   if (hasHover) {
     collageGrid.addEventListener("pointermove", (e) => {
@@ -424,7 +513,7 @@
     const svg = document.getElementById("story-svg");
     const caption = document.getElementById("story-caption");
     const live = document.getElementById("story-live");
-    const dotEls = [...document.querySelectorAll(".story-dots span")];
+    const dotEls = [...document.querySelectorAll(".story-dots button")];
     const track = document.getElementById("story-track");
     const NS = "http://www.w3.org/2000/svg";
 
@@ -494,14 +583,40 @@
         lastStage = stageIndex;
         caption.innerHTML = stages[stageIndex];
         live.textContent = stages[stageIndex].replace(/<[^>]+>/g, "");
-        dotEls.forEach((d, i) => d.classList.toggle("is-active", i === stageIndex));
+        dotEls.forEach((d, i) => {
+          const active = i === stageIndex;
+          d.classList.toggle("is-active", active);
+          d.setAttribute("aria-selected", String(active));
+          d.tabIndex = active ? 0 : -1;
+        });
       }
     };
 
     render(motionOff ? 1 : 0);
 
+    const stageProgress = [0, 0.5, 1];
+    dotEls.forEach((button, index) => {
+      button.addEventListener("click", () => {
+        if (compactStoryQuery.matches || motionOff) {
+          render(stageProgress[index]);
+          return;
+        }
+        const rect = track.getBoundingClientRect();
+        const top = window.scrollY + rect.top;
+        const total = Math.max(0, rect.height - window.innerHeight);
+        window.scrollTo({ top: top + total * stageProgress[index], behavior: "smooth" });
+      });
+      button.addEventListener("keydown", (event) => {
+        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+        event.preventDefault();
+        const next = (index + (event.key === "ArrowRight" ? 1 : -1) + dotEls.length) % dotEls.length;
+        dotEls[next].focus();
+        dotEls[next].click();
+      });
+    });
+
     const update = () => {
-      if (motionOff) return;
+      if (motionOff || compactStoryQuery.matches) return;
       const rect = track.getBoundingClientRect();
       const total = rect.height - window.innerHeight;
       render(total > 0 ? -rect.top / total : 1);
@@ -518,10 +633,12 @@
   const svg = document.getElementById("constellation");
   const caption = document.getElementById("graph-desc");
   const NS = "http://www.w3.org/2000/svg";
-  const W = 800;
-  const H = 440;
+  const compactGraph = window.matchMedia("(max-width: 640px)").matches;
+  const W = compactGraph ? 380 : 800;
+  const H = compactGraph ? 400 : 440;
   const CX = W / 2;
   const CY = H / 2;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
 
   const el = (tag, attrs) => {
     const node = document.createElementNS(NS, tag);
@@ -532,12 +649,13 @@
   const drawGraph = (nodes) => {
     svg.innerHTML = "";
     const group = el("g", { class: "graph-group" });
+    group.style.transformOrigin = `${CX}px ${CY}px`;
     svg.appendChild(group);
     const radiusOrbit = Math.min(W, H) / 2 - 70;
 
     group.appendChild(el("circle", { cx: CX, cy: CY, r: 26, class: "node-dot", fill: "#d7ff3f", "fill-opacity": 0.9 }));
     const centerLabel = el("text", { x: CX, y: CY + 4, "text-anchor": "middle", class: "node-label", fill: "#06110a" });
-    centerLabel.textContent = GITHUB_USER;
+    centerLabel.textContent = compactGraph ? "CSK" : GITHUB_USER;
     group.appendChild(centerLabel);
 
     const now = Date.now();
@@ -564,7 +682,7 @@
       );
 
       const label = el("text", { x, y: y + r + 16, "text-anchor": "middle", class: "node-label" });
-      label.textContent = n.name;
+      label.textContent = compactGraph && n.name.length > 13 ? `${n.name.slice(0, 12)}…` : n.name;
       group.appendChild(label);
     });
   };
@@ -574,7 +692,7 @@
       const nodes = data.repos
         .filter((r) => !r.fork)
         .sort((a, b) => new Date(b.pushed_at) - new Date(a.pushed_at))
-        .slice(0, 10)
+        .slice(0, compactGraph ? 6 : 10)
         .map((r) => ({ name: r.name, stars: r.stargazers_count, pushed_at: r.pushed_at }));
       drawGraph(nodes);
       caption.textContent = `GitHub API에서 실시간으로 불러온 ${nodes.length}개 저장소 · 밝은 노드 = 최근 90일 내 활동`;
@@ -627,7 +745,8 @@
     };
 
     const resize = () => {
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const compactCanvas = window.matchMedia("(max-width: 640px), (pointer: coarse)").matches;
+      const dpr = Math.min(window.devicePixelRatio || 1, compactCanvas ? 1.5 : 2);
       w = hero.clientWidth;
       h = hero.clientHeight;
       canvas.width = w * dpr;
@@ -635,7 +754,7 @@
       canvas.style.width = `${w}px`;
       canvas.style.height = `${h}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      const count = Math.min(70, Math.round((w * h) / 18000));
+      const count = Math.min(compactCanvas ? 32 : 70, Math.round((w * h) / (compactCanvas ? 28000 : 18000)));
       points = Array.from({ length: count }, () => ({
         x: Math.random() * w,
         y: Math.random() * h,
@@ -767,6 +886,7 @@
       scrollScheduled = false;
       updateProgress();
       updateHeaderCondense();
+      updateMobileDock();
       story.update();
       updateCollageScroll();
     });
