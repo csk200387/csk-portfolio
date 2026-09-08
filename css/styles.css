@@ -1143,7 +1143,16 @@ body.motion-off .scene-dot {
 @media (max-height: 520px) and (orientation: landscape) {
   :root { --space-7: 3.5rem; }
   .story-track { height: auto; }
-  .story-sticky { position: static; height: auto; padding-block: var(--space-3); }
+  .story-sticky {
+    position: static;
+    height: auto;
+    padding: var(--space-3) var(--space-4) 0;
+    flex-direction: row;
+    align-items: center;
+  }
+  #story-svg { width: min(55vw, 520px); }
+  .story-caption-wrap { flex: 1; padding-inline: 0; text-align: left; }
+  .story-dots { justify-content: flex-start; }
   .hero { min-height: 0; padding: 5rem 0 3rem; }
   .hero-title { font-size: clamp(2.2rem, 7vw, 3.8rem); }
   .hero-sub { max-width: 50ch; margin-top: 0.75rem; }
