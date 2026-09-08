@@ -1,78 +1,20 @@
+import { PROJECTS, STACK } from "./portfolio-data.js";
+import { filterProjects } from "./signal-model.js";
+import { initSignalExplorer } from "./signal-explorer.js";
+
 (() => {
   "use strict";
 
   const GITHUB_USER = "csk200387";
 
-  const PROJECTS = [
-    {
-      repo: "tabular-lens",
-      name: "Tabular Lens",
-      tagline: "로컬 우선 CSV/JSON 데이터 품질 프로파일러",
-      description:
-        "CSV·JSON 파일을 업로드하면 브라우저 안에서 스키마, 결측치, 이상치, 컬럼 분포를 분석합니다. 파일이 서버로 전송되지 않아 민감한 데이터도 안전하게 점검할 수 있습니다.",
-      tags: ["Data Quality", "Local-first", "CSV/JSON"],
-      type: ["data", "tool"],
-      github: "https://github.com/csk200387/tabular-lens",
-      live: "https://csk200387.github.io/tabular-lens/",
-    },
-    {
-      repo: "netflix-stats-viewer",
-      name: "Netflix Stats Viewer",
-      tagline: "프라이버시 우선 시청 기록 통계 대시보드",
-      description:
-        "넷플릭스에서 내려받은 시청 기록 파일을 업로드해 개인 시청 패턴을 시각화합니다. 데이터는 외부로 전송되지 않고 클라이언트에서만 처리됩니다.",
-      tags: ["Privacy-first", "Dashboard", "Data Viz"],
-      type: ["data"],
-      github: "https://github.com/csk200387/netflix-stats-viewer",
-      live: null,
-    },
-    {
-      repo: "speedrun-igt-dashboard",
-      name: "Speedrun IGT Dashboard",
-      tagline: "마인크래프트 스피드런 기록 분석 대시보드",
-      description:
-        "마인크래프트 스피드런의 IGT(In-Game Time) 기록을 카테고리별로 모아 추이와 분포를 인터랙티브하게 탐색할 수 있는 대시보드입니다.",
-      tags: ["Speedrun", "Analytics", "Interactive"],
-      type: ["data"],
-      github: "https://github.com/csk200387/speedrun-igt-dashboard",
-      live: "https://csk200387.github.io/speedrun-igt-dashboard/",
-    },
-    {
-      repo: "placepicker",
-      name: "Placepicker",
-      tagline: "약속 장소 중간지점 추천 서비스",
-      description:
-        "여러 명의 출발 위치를 입력하면 서로 만나기 편리한 중간 지점을 추천해주는 웹 앱입니다.",
-      tags: ["Location", "Web App"],
-      type: ["tool"],
-      github: "https://github.com/csk200387/placepicker",
-      live: "https://placepicker-alpha.vercel.app",
-    },
-    {
-      repo: "AnniCal",
-      name: "AnniCal",
-      tagline: "모든 기념일을 한눈에",
-      description:
-        "연인, 가족, 친구와의 다양한 기념일을 등록하고 D-day를 추적·관리할 수 있는 캘린더 앱입니다.",
-      tags: ["Calendar", "Web App"],
-      type: ["tool"],
-      github: "https://github.com/csk200387/AnniCal",
-      live: "https://annical.vercel.app/",
-    },
-  ];
-
-  const STACK = [
-    { group: "언어", items: ["Python", "JavaScript", "SQL", "TypeScript"] },
-    { group: "데이터 · ML", items: ["Pandas", "NumPy", "scikit-learn"] },
-    { group: "웹", items: ["HTML/CSS", "Node.js"] },
-    { group: "도구", items: ["Git", "GitHub Actions", "Vercel"] },
-  ];
 
   // -------------------------------------------------------
   // Motion preference: OS setting first, manual toggle overrides
   // -------------------------------------------------------
-  const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const savedMotion = localStorage.getItem("motion");
+  const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const prefersReduced = reducedMotionQuery.matches;
+  let savedMotion = null;
+  try { savedMotion = localStorage.getItem("motion"); } catch { /* Storage can be unavailable in private contexts. */ }
   let motionOff = savedMotion ? savedMotion === "off" : prefersReduced;
   const hasHover = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
   const compactStoryQuery = window.matchMedia(
@@ -97,7 +39,7 @@
   // -------------------------------------------------------
   const clockEl = document.getElementById("clock");
   const tickClock = () => {
-    clockEl.textContent = new Date().toLocaleTimeString("ko-KR", { hour12: false });
+    clockEl.textContent = new Date().toLocaleTimeString("ko-KR", { hour12: false, timeZone: "Asia/Seoul" });
   };
   tickClock();
   setInterval(tickClock, 1000);
@@ -121,7 +63,7 @@
     if (!repoDataPromise) {
       repoDataPromise = fetch(
         `https://api.github.com/users/${GITHUB_USER}/repos?per_page=100&sort=updated`,
-        { headers: { Accept: "application/vnd.github+json" } }
+        { headers: { Accept: "application/vnd.github+json" }, signal: AbortSignal.timeout(8000) }
       )
         .then((res) => (res.ok ? res.json() : Promise.reject(new Error(res.status))))
         .then((repos) => {
@@ -177,6 +119,13 @@
   const projectProgress = document.getElementById("project-progress");
   const projectPrev = document.getElementById("project-prev");
   const projectNext = document.getElementById("project-next");
+  const projectSearch = document.getElementById("project-search");
+  const projectEmpty = document.getElementById("project-empty");
+  const projectResults = document.getElementById("project-results");
+  const carouselControls = document.getElementById("project-carousel-controls");
+  let activeFilter = "all";
+  let activeView = "grid";
+  let visibleProjects = PROJECTS;
 
   const closestRailIndex = (rail, items) => {
     if (!items.length) return 0;
@@ -189,6 +138,7 @@
   };
 
   const syncProjectCarousel = () => {
+    carouselControls.hidden = activeView === "grid" || visibleProjects.length === 0;
     const items = [...deck.querySelectorAll(".scene-slot")];
     const index = closestRailIndex(deck, items);
     const total = items.length || 1;
@@ -300,11 +250,14 @@
 
   const sceneObserver = new IntersectionObserver(
     (entries) => entries.forEach((entry) => entry.target.classList.toggle("is-active", entry.isIntersecting)),
-    { rootMargin: "-40% 0px -40% 0px", threshold: 0 }
+    { rootMargin: "0px 0px -8% 0px", threshold: 0.1 }
   );
 
-  const renderProjectScenes = (filter = "all") => {
-    const visible = PROJECTS.filter((p) => filter === "all" || p.type.includes(filter));
+  const renderProjectScenes = () => {
+    const visible = filterProjects(PROJECTS, activeFilter, projectSearch.value);
+    visibleProjects = visible;
+    projectEmpty.hidden = visible.length > 0;
+    projectResults.textContent = `${visible.length}개의 프로젝트${projectSearch.value.trim() ? ` · “${projectSearch.value.trim()}” 검색 결과` : ""}`;
     sceneObserver.disconnect();
     deck.innerHTML = visible.map((p) => {
       const idx = PROJECTS.indexOf(p);
@@ -312,7 +265,7 @@
       const reversed = idx % 2 === 1 ? " is-reversed" : "";
       return `
       <div class="scene-slot">
-        <button class="project-scene${reversed}" type="button" data-index="${idx}"
+        <button class="project-scene${reversed}" type="button" data-index="${idx}" aria-label="${p.name} 상세 보기"
           style="--tone:var(--${tone});--tone-soft:var(--${tone}-soft)" aria-haspopup="dialog">
           <div class="scene-visual">${SCENE_SVG[p.repo] || ""}</div>
           <div class="scene-copy">
@@ -339,15 +292,37 @@
 
   document.querySelectorAll(".filter-button").forEach((button) => {
     button.addEventListener("click", () => {
-      const filter = button.dataset.filter;
+      activeFilter = button.dataset.filter;
       document.querySelectorAll(".filter-button").forEach((item) => {
         const selected = item === button;
         item.classList.toggle("is-selected", selected);
         item.setAttribute("aria-pressed", String(selected));
       });
-      renderProjectScenes(filter);
+      renderProjectScenes();
     });
   });
+
+  projectSearch.addEventListener("input", renderProjectScenes);
+  document.getElementById("project-reset").addEventListener("click", () => {
+    projectSearch.value = "";
+    document.querySelector('[data-filter="all"]').click();
+    projectSearch.focus();
+  });
+  document.querySelectorAll("[data-view]").forEach(button => {
+    button.addEventListener("click", () => {
+      activeView = button.dataset.view;
+      deck.classList.toggle("is-grid", activeView === "grid");
+      document.querySelectorAll("[data-view]").forEach(item => {
+        const selected = item === button;
+        item.classList.toggle("is-selected", selected);
+        item.setAttribute("aria-pressed", String(selected));
+      });
+      deck.scrollLeft = 0;
+      syncProjectCarousel();
+      onScroll();
+    });
+  });
+  window.addEventListener("resize", syncProjectCarousel, { passive: true });
 
   // Pointer parallax on the scene artwork + subtle tilt (pointer devices only)
   if (hasHover) {
@@ -377,41 +352,61 @@
   const dialog = document.getElementById("project-dialog");
   const dialogBody = document.getElementById("dialog-body");
   let lastTrigger = null;
+  let currentProject = null;
+  let dialogSequence = 0;
+  const escapeHTML = value => String(value).replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
 
-  const renderDialog = (project, repoInfo) => {
-    const metrics = repoInfo
-      ? `<h4>실시간 GitHub 지표</h4>
-        <dl class="metrics-grid">
+  const renderMetrics = repoInfo => repoInfo
+      ? `<dl class="metrics-grid">
           <div class="metric"><dt>Stars</dt><dd>${repoInfo.stargazers_count}</dd></div>
-          <div class="metric"><dt>Language</dt><dd>${repoInfo.language || "—"}</dd></div>
+          <div class="metric"><dt>Language</dt><dd>${escapeHTML(repoInfo.language || "—")}</dd></div>
           <div class="metric"><dt>Updated</dt><dd>${new Date(repoInfo.pushed_at).toLocaleDateString("ko-KR")}</dd></div>
         </dl>`
-      : `<h4>실시간 GitHub 지표</h4><p class="dialog-desc">불러올 수 없습니다 (private repo 또는 API 제한).</p>`;
+      : '<p class="dialog-desc">지금은 GitHub 지표를 불러올 수 없습니다. 저장소에서 직접 확인할 수 있습니다.</p>';
 
+  const renderDialog = project => {
+    const tone = SCENE_TONE[project.repo];
+    const index = PROJECTS.indexOf(project);
     dialogBody.innerHTML = `
       <h3 id="dialog-title">${project.name}</h3>
       <p class="dialog-tagline">${project.tagline}</p>
+      <div class="dialog-preview" style="--tone:var(--${tone});--tone-soft:var(--${tone}-soft)">${SCENE_SVG[project.repo]}</div>
       <p class="dialog-desc">${project.description}</p>
       <h4>기술 태그</h4>
       <div class="dialog-tags">${project.tags.map((t) => `<span class="tag">${t}</span>`).join("")}</div>
-      ${metrics}
+      <h4>실시간 GitHub 지표</h4>
+      <div id="dialog-metrics" aria-live="polite"><p class="dialog-desc">GitHub 지표를 불러오는 중…</p></div>
       <div class="dialog-links">
         <a class="btn btn-primary btn-sm" href="${project.github}" target="_blank" rel="noreferrer">GitHub 저장소</a>
         ${project.live ? `<a class="btn btn-ghost btn-sm" href="${project.live}" target="_blank" rel="noreferrer">라이브 데모</a>` : ""}
       </div>
+      <div class="dialog-navigation"><button type="button" data-dialog-step="-1" ${index === 0 ? "disabled" : ""}>← 이전 작업</button><span>${String(index + 1).padStart(2, "0")} / 05</span><button type="button" data-dialog-step="1" ${index === PROJECTS.length - 1 ? "disabled" : ""}>다음 작업 →</button></div>
     `;
   };
 
   const openProject = (index, trigger) => {
     const project = PROJECTS[index];
-    lastTrigger = trigger;
-    renderDialog(project, null);
-    dialog.showModal();
+    if (!project) return;
+    currentProject = project;
+    const sequence = ++dialogSequence;
+    if (trigger) lastTrigger = trigger;
+    renderDialog(project);
+    if (!dialog.open) dialog.showModal();
+    dialog.scrollTop = 0;
     loadRepoData().then((data) => {
       const repoInfo = data && data.byName.get(project.repo);
-      if (dialog.open) renderDialog(project, repoInfo);
+      if (dialog.open && sequence === dialogSequence) document.getElementById("dialog-metrics").innerHTML = renderMetrics(repoInfo);
     });
   };
+
+  dialogBody.addEventListener("click", event => {
+    const button = event.target.closest("[data-dialog-step]");
+    if (!button || !currentProject) return;
+    const step = Number(button.dataset.dialogStep);
+    openProject(PROJECTS.indexOf(currentProject) + step);
+    const nextButton = dialogBody.querySelector(`[data-dialog-step="${step}"]`);
+    (nextButton.disabled ? dialog.querySelector(".dialog-close") : nextButton).focus();
+  });
 
   deck.addEventListener("click", (e) => {
     const scene = e.target.closest(".project-scene");
@@ -420,7 +415,9 @@
   });
 
   dialog.addEventListener("close", () => {
-    if (lastTrigger) lastTrigger.focus();
+    dialogSequence++;
+    currentProject = null;
+    if (lastTrigger && lastTrigger.isConnected) lastTrigger.focus({ preventScroll: true });
   });
 
   dialog.addEventListener("click", (e) => {
@@ -607,9 +604,9 @@
         window.scrollTo({ top: top + total * stageProgress[index], behavior: "smooth" });
       });
       button.addEventListener("keydown", (event) => {
-        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
         event.preventDefault();
-        const next = (index + (event.key === "ArrowRight" ? 1 : -1) + dotEls.length) % dotEls.length;
+        const next = event.key === "Home" ? 0 : event.key === "End" ? dotEls.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + dotEls.length) % dotEls.length;
         dotEls[next].focus();
         dotEls[next].click();
       });
@@ -654,7 +651,7 @@
     const radiusOrbit = Math.min(W, H) / 2 - 70;
 
     group.appendChild(el("circle", { cx: CX, cy: CY, r: 26, class: "node-dot", fill: "#d7ff3f", "fill-opacity": 0.9 }));
-    const centerLabel = el("text", { x: CX, y: CY + 4, "text-anchor": "middle", class: "node-label", fill: "#06110a" });
+    const centerLabel = el("text", { x: CX, y: CY + 4, "text-anchor": "middle", class: "node-label graph-center-label" });
     centerLabel.textContent = compactGraph ? "CSK" : GITHUB_USER;
     group.appendChild(centerLabel);
 
@@ -670,7 +667,11 @@
 
       group.appendChild(el("line", { x1: CX, y1: CY, x2: x, y2: y, class: "edge-line" }));
 
-      group.appendChild(
+      const link = el("a", { href: `https://github.com/${GITHUB_USER}/${encodeURIComponent(n.name)}`, target: "_blank", rel: "noreferrer", tabindex: "0", class: "graph-node", "aria-label": `${n.name} GitHub 저장소 열기` });
+      const title = el("title", {});
+      title.textContent = `${n.name} · ${n.stars || 0} stars`;
+      link.appendChild(title);
+      link.appendChild(
         el("circle", {
           cx: x,
           cy: y,
@@ -683,7 +684,8 @@
 
       const label = el("text", { x, y: y + r + 16, "text-anchor": "middle", class: "node-label" });
       label.textContent = compactGraph && n.name.length > 13 ? `${n.name.slice(0, 12)}…` : n.name;
-      group.appendChild(label);
+      link.appendChild(label);
+      group.appendChild(link);
     });
   };
 
@@ -721,147 +723,116 @@
   }
 
   // -------------------------------------------------------
-  // Hero generative data field (canvas)
+  // Interactive data explorer, with one animation loop and static motion-off states.
   // -------------------------------------------------------
-  const initHeroField = () => {
-    const canvas = document.getElementById("hero-field");
-    const ctx = canvas.getContext("2d");
-    const hero = document.getElementById("top");
-    let w = 0;
-    let h = 0;
-    let points = [];
-    let pointer = null;
-    let rafId = null;
-    let visible = true;
-
-    const drawStatic = () => {
-      ctx.clearRect(0, 0, w, h);
-      ctx.fillStyle = "rgba(215,255,63,0.6)";
-      points.forEach((p) => {
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 1.6, 0, Math.PI * 2);
-        ctx.fill();
-      });
-    };
-
-    const resize = () => {
-      const compactCanvas = window.matchMedia("(max-width: 640px), (pointer: coarse)").matches;
-      const dpr = Math.min(window.devicePixelRatio || 1, compactCanvas ? 1.5 : 2);
-      w = hero.clientWidth;
-      h = hero.clientHeight;
-      canvas.width = w * dpr;
-      canvas.height = h * dpr;
-      canvas.style.width = `${w}px`;
-      canvas.style.height = `${h}px`;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      const count = Math.min(compactCanvas ? 32 : 70, Math.round((w * h) / (compactCanvas ? 28000 : 18000)));
-      points = Array.from({ length: count }, () => ({
-        x: Math.random() * w,
-        y: Math.random() * h,
-        vx: (Math.random() - 0.5) * 0.25,
-        vy: (Math.random() - 0.5) * 0.25,
-      }));
-      if (motionOff) drawStatic();
-    };
-
-    const tick = () => {
-      ctx.clearRect(0, 0, w, h);
-      points.forEach((p) => {
-        p.x += p.vx;
-        p.y += p.vy;
-        if (p.x < 0 || p.x > w) p.vx *= -1;
-        if (p.y < 0 || p.y > h) p.vy *= -1;
-        if (pointer) {
-          const dx = p.x - pointer.x;
-          const dy = p.y - pointer.y;
-          const dist = Math.hypot(dx, dy) || 1;
-          if (dist < 120) {
-            const force = ((120 - dist) / 120) * 0.06;
-            p.x += (dx / dist) * force;
-            p.y += (dy / dist) * force;
-          }
-        }
-      });
-      for (let i = 0; i < points.length; i++) {
-        for (let j = i + 1; j < points.length; j++) {
-          const dx = points[i].x - points[j].x;
-          const dy = points[i].y - points[j].y;
-          const dist = Math.hypot(dx, dy);
-          if (dist < 110) {
-            ctx.strokeStyle = `rgba(91,232,255,${(1 - dist / 110) * 0.35})`;
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(points[i].x, points[i].y);
-            ctx.lineTo(points[j].x, points[j].y);
-            ctx.stroke();
-          }
-        }
-      }
-      ctx.fillStyle = "rgba(215,255,63,0.75)";
-      points.forEach((p) => {
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 1.8, 0, Math.PI * 2);
-        ctx.fill();
-      });
-      if (visible && !motionOff) rafId = requestAnimationFrame(tick);
-      else rafId = null;
-    };
-
-    const start = () => {
-      if (rafId || motionOff || !visible) return;
-      rafId = requestAnimationFrame(tick);
-    };
-    const stop = () => {
-      if (rafId) cancelAnimationFrame(rafId);
-      rafId = null;
-    };
-
-    hero.addEventListener("pointermove", (e) => {
-      const rect = canvas.getBoundingClientRect();
-      pointer = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-    });
-    hero.addEventListener("pointerleave", () => {
-      pointer = null;
-    });
-
-    new IntersectionObserver(
-      ([entry]) => {
-        visible = entry.isIntersecting;
-        if (visible) start();
-        else stop();
-      },
-      { threshold: 0 }
-    ).observe(hero);
-
-    document.addEventListener("visibilitychange", () => {
-      if (document.hidden) stop();
-      else start();
-    });
-
-    window.addEventListener("resize", resize, { passive: true });
-    resize();
-    start();
-
-    return {
-      onMotionChange: () => {
-        if (motionOff) {
-          stop();
-          drawStatic();
-        } else {
-          start();
-        }
-      },
-    };
-  };
-  const heroField = initHeroField();
+  const heroField = initSignalExplorer(() => motionOff);
 
   motionToggle.addEventListener("click", () => {
     motionOff = !motionOff;
-    localStorage.setItem("motion", motionOff ? "off" : "on");
+    savedMotion = motionOff ? "off" : "on";
+    try { localStorage.setItem("motion", savedMotion); } catch { /* Keep the current preference in memory. */ }
     applyMotionState();
     heroField.onMotionChange();
     if (motionOff) story.render(1);
     onScroll();
+  });
+
+  reducedMotionQuery.addEventListener("change", event => {
+    if (savedMotion !== null) return;
+    motionOff = event.matches;
+    applyMotionState();
+    heroField.onMotionChange();
+    if (motionOff) story.render(1);
+    onScroll();
+  });
+
+  // Quick navigation: native dialog handles Escape, focus containment, and touch.
+  const quickDialog = document.getElementById("quick-dialog");
+  const quickSearch = document.getElementById("quick-search");
+  const quickResults = document.getElementById("quick-results");
+  const quickOpen = document.getElementById("quick-open");
+  let quickTrigger = quickOpen;
+  let quickMatches = [];
+  const quickItems = [
+    { name: "홈 · Signal Explorer", section: "top", group: "SECTION" },
+    { name: "데이터가 도구가 되는 과정", section: "story", group: "SECTION" },
+    { name: "GitHub 활동 그래프", section: "graph", group: "SECTION" },
+    { name: "소개 · 관심 분야", section: "about", group: "SECTION" },
+    { name: "프로젝트 · 작업 모아보기", section: "projects", group: "SECTION" },
+    { name: "스택 · 사용하는 기술", section: "stack", group: "SECTION" },
+    { name: "연락 · 함께 만드는 다음 신호", section: "contact", group: "SECTION" },
+    ...PROJECTS.map((project, index) => ({ name: project.name, keywords: project.tagline + " " + project.tags.join(" "), index, group: "PROJECT" })),
+  ];
+  const renderQuickResults = () => {
+    const query = quickSearch.value.trim().toLocaleLowerCase();
+    quickMatches = quickItems.filter(item => `${item.name} ${item.keywords || ""}`.toLocaleLowerCase().includes(query));
+    quickResults.innerHTML = quickMatches.map((item, i) => `<button type="button" class="quick-result" data-quick-index="${i}"><span>${escapeHTML(item.name)}</span><small>${item.group} ↗</small></button>`).join("");
+    document.getElementById("quick-empty").hidden = quickMatches.length !== 0;
+  };
+  const openQuick = () => {
+    if (dialog.open || quickDialog.open) return;
+    quickTrigger = document.activeElement;
+    quickSearch.value = "";
+    renderQuickResults();
+    quickDialog.showModal();
+    quickSearch.focus();
+  };
+  quickOpen.addEventListener("click", openQuick);
+  quickSearch.addEventListener("input", renderQuickResults);
+  document.getElementById("quick-close").addEventListener("click", () => quickDialog.close());
+  quickDialog.addEventListener("close", () => {
+    if (!dialog.open && quickTrigger?.isConnected) quickTrigger.focus({ preventScroll: true });
+  });
+  quickResults.addEventListener("click", event => {
+    const button = event.target.closest("[data-quick-index]");
+    if (!button) return;
+    const item = quickMatches[Number(button.dataset.quickIndex)];
+    quickDialog.close();
+    if (item.section) {
+      const section = document.getElementById(item.section);
+      section.scrollIntoView({ behavior: motionOff ? "instant" : "smooth" });
+      // Restore focus to the destination after the native dialog restores its trigger.
+      requestAnimationFrame(() => {
+        section.tabIndex = -1;
+        section.focus({ preventScroll: true });
+      });
+    } else openProject(item.index, quickOpen);
+  });
+  quickDialog.addEventListener("keydown", event => {
+    const buttons = [...quickResults.querySelectorAll("button")];
+    if (!buttons.length) return;
+    const current = buttons.indexOf(document.activeElement);
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const index = current === -1 ? (event.key === "ArrowDown" ? 0 : buttons.length - 1) : (current + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length;
+      buttons[index].focus();
+    } else if (event.key === "Enter" && document.activeElement === quickSearch) {
+      event.preventDefault();
+      buttons[0].click();
+    }
+  });
+  quickDialog.addEventListener("click", event => {
+    const rect = quickDialog.getBoundingClientRect();
+    if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) quickDialog.close();
+  });
+  const isApple = /Mac|iPhone|iPad/.test(navigator.platform);
+  quickOpen.querySelector("kbd").textContent = isApple ? "⌘ K" : "Ctrl K";
+  document.addEventListener("keydown", event => {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+      event.preventDefault();
+      if (quickDialog.open) quickDialog.close();
+      else openQuick();
+    }
+  });
+
+  document.getElementById("copy-profile").addEventListener("click", async () => {
+    const status = document.getElementById("copy-status");
+    try {
+      await navigator.clipboard.writeText(`https://github.com/${GITHUB_USER}`);
+      status.textContent = "프로필 링크를 복사했습니다.";
+    } catch {
+      status.textContent = `복사할 수 없습니다. 이 주소를 선택해 복사해 주세요: https://github.com/${GITHUB_USER}`;
+    }
   });
 
   // -------------------------------------------------------
@@ -869,6 +840,20 @@
   // -------------------------------------------------------
   const header = document.getElementById("site-header");
   const progressBar = document.getElementById("scroll-progress-bar");
+  const desktopLinks = [...document.querySelectorAll(".site-nav a")];
+  const updateDesktopNav = () => {
+    const marker = window.scrollY + window.innerHeight * .35;
+    const current = desktopLinks.reduce((active, link) => {
+      const section = document.querySelector(link.getAttribute("href"));
+      return section.offsetTop <= marker ? link : active;
+    }, desktopLinks[0]);
+    desktopLinks.forEach(link => {
+      const active = link === current;
+      link.classList.toggle("is-active", active);
+      if (active) link.setAttribute("aria-current", "location");
+      else link.removeAttribute("aria-current");
+    });
+  };
 
   const updateProgress = () => {
     const max = document.documentElement.scrollHeight - window.innerHeight;
@@ -887,6 +872,7 @@
       updateProgress();
       updateHeaderCondense();
       updateMobileDock();
+      updateDesktopNav();
       story.update();
       updateCollageScroll();
     });
