@@ -10,12 +10,14 @@ export function createSignalPoints(seed = 1) {
     const z = random() * 2 - 1;
     const radius = .3 + random() * .8;
     const ring = Math.sqrt(1 - z * z);
-    const latitude = 1 - 2 * (i + .5) / 216;
-    const longitude = i * Math.PI * (3 - Math.sqrt(5));
+    const longitude = (i % 24) / 24 * Math.PI * 2;
+    const tubeAngle = Math.floor(i / 24) / 9 * Math.PI * 2;
+    const tubeRadius = .27;
+    const ringRadius = .77 + Math.cos(tubeAngle) * tubeRadius;
     return {
       scatter: [Math.cos(azimuth) * ring * radius, z * radius, Math.sin(azimuth) * ring * radius],
       grid: [(i % 6 - 2.5) * .3, (Math.floor(i / 6) % 6 - 2.5) * .3, (Math.floor(i / 36) - 2.5) * .3],
-      orbit: [Math.cos(longitude) * Math.sqrt(1 - latitude * latitude), latitude, Math.sin(longitude) * Math.sqrt(1 - latitude * latitude)],
+      orbit: [Math.cos(longitude) * ringRadius, Math.sin(tubeAngle) * tubeRadius, Math.sin(longitude) * ringRadius],
       phase: random() * Math.PI * 2,
     };
   });

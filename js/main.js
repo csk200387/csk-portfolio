@@ -1,6 +1,7 @@
 import { PROJECTS, STACK } from "./portfolio-data.js";
 import { filterProjects } from "./signal-model.js";
 import { initSignalExplorer } from "./signal-explorer.js";
+import { initMotionEdition } from "./motion-edition.js";
 
 (() => {
   "use strict";
@@ -267,7 +268,7 @@ import { initSignalExplorer } from "./signal-explorer.js";
       <div class="scene-slot">
         <button class="project-scene${reversed}" type="button" data-index="${idx}" aria-label="${p.name} 상세 보기"
           style="--tone:var(--${tone});--tone-soft:var(--${tone}-soft)" aria-haspopup="dialog">
-          <div class="scene-visual">${SCENE_SVG[p.repo] || ""}</div>
+          <div class="scene-visual" data-project-number="${String(idx + 1).padStart(2, "0")}">${SCENE_SVG[p.repo] || ""}</div>
           <div class="scene-copy">
             <span class="scene-number">${String(idx + 1).padStart(2, "0")}</span>
             <span class="project-status ${p.live ? "is-live" : ""}">${p.live ? "LIVE" : "GITHUB ONLY"}</span>
@@ -726,6 +727,7 @@ import { initSignalExplorer } from "./signal-explorer.js";
   // Interactive data explorer, with one animation loop and static motion-off states.
   // -------------------------------------------------------
   const heroField = initSignalExplorer(() => motionOff);
+  const motionEdition = initMotionEdition(() => motionOff);
 
   motionToggle.addEventListener("click", () => {
     motionOff = !motionOff;
@@ -733,6 +735,7 @@ import { initSignalExplorer } from "./signal-explorer.js";
     try { localStorage.setItem("motion", savedMotion); } catch { /* Keep the current preference in memory. */ }
     applyMotionState();
     heroField.onMotionChange();
+    motionEdition.onMotionChange();
     if (motionOff) story.render(1);
     onScroll();
   });
@@ -742,6 +745,7 @@ import { initSignalExplorer } from "./signal-explorer.js";
     motionOff = event.matches;
     applyMotionState();
     heroField.onMotionChange();
+    motionEdition.onMotionChange();
     if (motionOff) story.render(1);
     onScroll();
   });
