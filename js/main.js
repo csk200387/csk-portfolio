@@ -1,886 +1,402 @@
 import { PROJECTS, STACK } from "./portfolio-data.js";
 import { filterProjects } from "./signal-model.js";
-import { initSignalExplorer } from "./signal-explorer.js";
-import { initMotionEdition } from "./motion-edition.js";
 
-(() => {
-  "use strict";
+const GITHUB_USER = "csk200387";
+const $ = id => document.getElementById(id);
+const pad = n => String(n).padStart(2, "0");
+const escapeHTML = value => String(value).replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
+const hasHover = matchMedia("(hover: hover) and (pointer: fine)").matches;
 
-  const GITHUB_USER = "csk200387";
+// -------------------------------------------------------
+// Motion preference: OS setting first, manual toggle overrides
+// -------------------------------------------------------
+const reducedMotionQuery = matchMedia("(prefers-reduced-motion: reduce)");
+let savedMotion = null;
+try { savedMotion = localStorage.getItem("motion"); } catch { /* Storage can be unavailable in private contexts. */ }
+let motionOff = savedMotion ? savedMotion === "off" : reducedMotionQuery.matches;
+const isMotionOff = () => motionOff;
+let art = null;
 
+const applyMotionState = () => {
+  document.body.classList.toggle("motion-off", motionOff);
+  $("motion-toggle").setAttribute("aria-pressed", String(motionOff));
+  $("motion-label").textContent = motionOff ? "off" : "on";
+  if (motionOff) blocks.forEach(finish);
+  art?.onMotionChange();
+};
 
-  // -------------------------------------------------------
-  // Motion preference: OS setting first, manual toggle overrides
-  // -------------------------------------------------------
-  const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-  const prefersReduced = reducedMotionQuery.matches;
-  let savedMotion = null;
-  try { savedMotion = localStorage.getItem("motion"); } catch { /* Storage can be unavailable in private contexts. */ }
-  let motionOff = savedMotion ? savedMotion === "off" : prefersReduced;
-  const hasHover = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
-  const compactStoryQuery = window.matchMedia(
-    "(max-width: 640px), (max-height: 520px) and (orientation: landscape)"
-  );
-
-  const body = document.body;
-  const motionToggle = document.getElementById("motion-toggle");
-  const motionLabel = document.getElementById("motion-toggle-label");
-
-  const applyMotionState = () => {
-    body.classList.toggle("motion-off", motionOff);
-    motionToggle.setAttribute("aria-pressed", String(motionOff));
-    motionLabel.textContent = motionOff ? "모션 꺼짐" : "모션 켜짐";
-  };
-  applyMotionState();
-
-  document.getElementById("year").textContent = new Date().getFullYear();
-
-  // -------------------------------------------------------
-  // Clock
-  // -------------------------------------------------------
-  const clockEl = document.getElementById("clock");
-  const tickClock = () => {
-    clockEl.textContent = new Date().toLocaleTimeString("ko-KR", { hour12: false, timeZone: "Asia/Seoul" });
-  };
-  tickClock();
-  setInterval(tickClock, 1000);
-
-  // -------------------------------------------------------
-  // Stack chips
-  // -------------------------------------------------------
-  document.getElementById("stack-groups").innerHTML = STACK.map(
-    (g) => `
-    <div class="stack-group">
-      <h3>${g.group}</h3>
-      <ul>${g.items.map((i) => `<li>${i}</li>`).join("")}</ul>
-    </div>`
-  ).join("");
-
-  // -------------------------------------------------------
-  // GitHub data (shared by graph + modal metrics)
-  // -------------------------------------------------------
-  let repoDataPromise = null;
-  const loadRepoData = () => {
-    if (!repoDataPromise) {
-      repoDataPromise = fetch(
-        `https://api.github.com/users/${GITHUB_USER}/repos?per_page=100&sort=updated`,
-        { headers: { Accept: "application/vnd.github+json" }, signal: AbortSignal.timeout(8000) }
-      )
-        .then((res) => (res.ok ? res.json() : Promise.reject(new Error(res.status))))
-        .then((repos) => {
-          const byName = new Map(repos.map((r) => [r.name, r]));
-          return { repos, byName };
-        })
-        .catch(() => null);
-    }
-    return repoDataPromise;
-  };
-
-  document.getElementById("stat-repos").textContent = PROJECTS.length;
-  document.getElementById("stat-deployed").textContent = PROJECTS.filter((p) => p.live).length;
-
-  // -------------------------------------------------------
-  // Scroll-triggered reveal
-  // -------------------------------------------------------
-  const revealObserver = new IntersectionObserver(
-    (entries) => {
-      entries.forEach((entry) => {
-        if (entry.isIntersecting) {
-          entry.target.classList.add("is-visible");
-          revealObserver.unobserve(entry.target);
-        }
-      });
-    },
-    { threshold: 0.15 }
-  );
-  document.querySelectorAll(".reveal").forEach((el) => revealObserver.observe(el));
-
-  // Mobile dock — keep the current section visible without a menu overlay.
-  const mobileDockLinks = [...document.querySelectorAll(".mobile-dock a")];
-  const updateMobileDock = () => {
-    if (!mobileDockLinks.length) return;
-    const marker = window.scrollY + window.innerHeight * 0.55;
-    const activeLink = mobileDockLinks.reduce((current, link) => {
-      const section = document.getElementById(link.dataset.section);
-      return section && section.offsetTop <= marker ? link : current;
-    }, mobileDockLinks[0]);
-    mobileDockLinks.forEach((link) => {
-      const active = link === activeLink;
-      link.classList.toggle("is-active", active);
-      if (active) link.setAttribute("aria-current", "location");
-      else link.removeAttribute("aria-current");
+// -------------------------------------------------------
+// Terminal blocks type their command when scrolled into view
+// -------------------------------------------------------
+// Each word gets its own mask so it can lift into view (SEED landing RevealText).
+const splitWords = el => {
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  let i = 0;
+  nodes.forEach(node => {
+    const words = node.textContent.split(/(\s+)/).filter(Boolean).map(part => {
+      if (/^\s+$/.test(part)) return part;
+      const mask = document.createElement("span"), word = document.createElement("span");
+      mask.className = "w";
+      word.textContent = part;
+      word.style.setProperty("--i", i++);
+      mask.append(word);
+      return mask;
     });
-  };
-
-  // -------------------------------------------------------
-  // Project cards — cinematic scroll-stacked scenes
-  // -------------------------------------------------------
-  const deck = document.getElementById("project-deck");
-  const projectCounter = document.getElementById("project-counter");
-  const projectProgress = document.getElementById("project-progress");
-  const projectPrev = document.getElementById("project-prev");
-  const projectNext = document.getElementById("project-next");
-  const projectSearch = document.getElementById("project-search");
-  const projectEmpty = document.getElementById("project-empty");
-  const projectResults = document.getElementById("project-results");
-  const carouselControls = document.getElementById("project-carousel-controls");
-  let activeFilter = "all";
-  let activeView = "grid";
-  let visibleProjects = PROJECTS;
-
-  const closestRailIndex = (rail, items) => {
-    if (!items.length) return 0;
-    const center = rail.getBoundingClientRect().left + rail.clientWidth / 2;
-    return items.reduce((best, item, index) => {
-      const rect = item.getBoundingClientRect();
-      const distance = Math.abs(rect.left + rect.width / 2 - center);
-      return distance < best.distance ? { index, distance } : best;
-    }, { index: 0, distance: Infinity }).index;
-  };
-
-  const syncProjectCarousel = () => {
-    carouselControls.hidden = activeView === "grid" || visibleProjects.length === 0;
-    const items = [...deck.querySelectorAll(".scene-slot")];
-    const index = closestRailIndex(deck, items);
-    const total = items.length || 1;
-    projectCounter.textContent = `${String(index + 1).padStart(2, "0")} / ${String(total).padStart(2, "0")}`;
-    projectProgress.style.setProperty("--rail-progress", String((index + 1) / total));
-    projectPrev.disabled = index === 0;
-    projectNext.disabled = index === total - 1;
-  };
-
-  const moveProject = (direction) => {
-    const items = [...deck.querySelectorAll(".scene-slot")];
-    if (!items.length) return;
-    const current = closestRailIndex(deck, items);
-    const target = items[Math.max(0, Math.min(items.length - 1, current + direction))];
-    const railRect = deck.getBoundingClientRect();
-    const targetRect = target.getBoundingClientRect();
-    deck.scrollTo({
-      left: deck.scrollLeft + targetRect.left - railRect.left - (deck.clientWidth - targetRect.width) / 2,
-      behavior: motionOff ? "auto" : "smooth",
-    });
-  };
-
-  let projectScrollFrame = null;
-  deck.addEventListener("scroll", () => {
-    if (projectScrollFrame) return;
-    projectScrollFrame = requestAnimationFrame(() => {
-      projectScrollFrame = null;
-      syncProjectCarousel();
-    });
-  }, { passive: true });
-  projectPrev.addEventListener("click", () => moveProject(-1));
-  projectNext.addEventListener("click", () => moveProject(1));
-
-  const SCENE_TONE = {
-    "tabular-lens": "lime",
-    "netflix-stats-viewer": "cyan",
-    "speedrun-igt-dashboard": "warm",
-    placepicker: "cyan",
-    AnniCal: "lime",
-  };
-
-  const calendarCells = () => {
-    const events = new Set([2, 9, 16, 22]);
-    let cells = "";
-    for (let i = 0; i < 28; i++) {
-      const col = i % 7;
-      const row = Math.floor(i / 7);
-      const x = 20 + col * 50;
-      const y = 15 + row * 50;
-      const isEvent = events.has(i);
-      cells += `<rect x="${x}" y="${y}" width="40" height="40" rx="6" fill="${isEvent ? "var(--tone)" : "#161c24"}" fill-opacity="${isEvent ? 0.85 : 1}" stroke="#232a32"/>`;
-      if (isEvent) cells += `<circle class="scene-dot" cx="${x + 20}" cy="${y + 20}" r="4" fill="#fff" style="transition-delay:${col * 0.06}s"/>`;
-    }
-    const pts = [...events].map((i) => {
-      const col = i % 7;
-      const row = Math.floor(i / 7);
-      return `${20 + col * 50 + 20},${15 + row * 50 + 20}`;
-    });
-    const path = `M${pts.join(" L")}`;
-    return `<g>${cells}<path class="scene-draw" d="${path}" fill="none" stroke="var(--tone)" stroke-width="1.5" stroke-dasharray="4 4" pathLength="100" opacity="0.8"/></g>`;
-  };
-
-  const SCENE_SVG = {
-    "tabular-lens": `
-      <svg viewBox="0 0 400 240" aria-hidden="true">
-        <g stroke="#2a323b" stroke-width="1.5" fill="none">
-          <rect x="20" y="20" width="360" height="180" rx="8"/>
-          <line x1="20" y1="65" x2="380" y2="65"/><line x1="20" y1="110" x2="380" y2="110"/><line x1="20" y1="155" x2="380" y2="155"/>
-          <line x1="130" y1="20" x2="130" y2="200"/>
-        </g>
-        <rect class="scene-bar" x="150" y="35" width="200" height="14" rx="7" fill="var(--tone)" fill-opacity=".85"/>
-        <rect class="scene-bar" x="150" y="80" width="120" height="14" rx="7" fill="var(--tone)" fill-opacity=".55" style="transition-delay:.08s"/>
-        <rect class="scene-bar" x="150" y="125" width="170" height="14" rx="7" fill="var(--tone)" fill-opacity=".7" style="transition-delay:.16s"/>
-        <rect class="scene-bar" x="150" y="170" width="60" height="14" rx="7" fill="#ff8a5c" fill-opacity=".8" style="transition-delay:.24s"/>
-      </svg>`,
-    "netflix-stats-viewer": `
-      <svg viewBox="0 0 400 240" aria-hidden="true">
-        <line x1="20" y1="205" x2="380" y2="205" stroke="#2a323b" stroke-width="1.5"/>
-        <path class="scene-draw" d="M20,165 C80,125 120,185 160,115 C200,65 240,145 280,95 C320,55 350,105 380,75" fill="none" stroke="var(--tone)" stroke-width="3" pathLength="100"/>
-        <circle class="scene-dot" cx="160" cy="115" r="5" fill="var(--tone)"/>
-        <circle class="scene-dot" cx="280" cy="95" r="5" fill="var(--tone)" style="transition-delay:.15s"/>
-        <circle class="scene-dot" cx="380" cy="75" r="6" fill="#fff" style="transition-delay:.3s"/>
-      </svg>`,
-    "speedrun-igt-dashboard": `
-      <svg viewBox="0 0 400 240" aria-hidden="true">
-        <g stroke="#2a323b" stroke-width="1"><line x1="20" y1="30" x2="20" y2="205"/><line x1="20" y1="205" x2="380" y2="205"/></g>
-        <polyline class="scene-draw" points="20,185 80,150 140,165 200,100 260,120 320,55 380,80" fill="none" stroke="var(--tone)" stroke-width="3" pathLength="100"/>
-        <g fill="var(--tone)">
-          <circle class="scene-dot" cx="80" cy="150" r="4"/>
-          <circle class="scene-dot" cx="200" cy="100" r="4" style="transition-delay:.1s"/>
-          <circle class="scene-dot" cx="320" cy="55" r="5" style="transition-delay:.2s"/>
-        </g>
-      </svg>`,
-    placepicker: `
-      <svg viewBox="0 0 400 240" aria-hidden="true">
-        <g stroke="#232a32" stroke-width="1">
-          <line x1="0" y1="60" x2="400" y2="60"/><line x1="0" y1="120" x2="400" y2="120"/><line x1="0" y1="180" x2="400" y2="180"/>
-          <line x1="100" y1="0" x2="100" y2="240"/><line x1="200" y1="0" x2="200" y2="240"/><line x1="300" y1="0" x2="300" y2="240"/>
-        </g>
-        <path class="scene-draw" d="M60,50 L200,130 L340,70" fill="none" stroke="var(--tone)" stroke-width="2" stroke-dasharray="6 6" pathLength="100"/>
-        <path class="scene-draw" d="M60,50 L200,130 L100,200" fill="none" stroke="var(--tone)" stroke-width="2" stroke-dasharray="6 6" pathLength="100" style="transition-delay:.1s"/>
-        <circle class="scene-dot" cx="60" cy="50" r="7" fill="#fff"/>
-        <circle class="scene-dot" cx="340" cy="70" r="7" fill="#fff" style="transition-delay:.1s"/>
-        <circle class="scene-dot" cx="100" cy="200" r="7" fill="#fff" style="transition-delay:.2s"/>
-        <circle class="scene-dot" cx="200" cy="130" r="10" fill="var(--tone)" style="transition-delay:.3s"/>
-      </svg>`,
-    AnniCal: `<svg viewBox="0 0 400 240" aria-hidden="true">${calendarCells()}</svg>`,
-  };
-
-  const sceneObserver = new IntersectionObserver(
-    (entries) => entries.forEach((entry) => entry.target.classList.toggle("is-active", entry.isIntersecting)),
-    { rootMargin: "0px 0px -8% 0px", threshold: 0.1 }
-  );
-
-  const renderProjectScenes = () => {
-    const visible = filterProjects(PROJECTS, activeFilter, projectSearch.value);
-    visibleProjects = visible;
-    projectEmpty.hidden = visible.length > 0;
-    projectResults.textContent = `${visible.length}개의 프로젝트${projectSearch.value.trim() ? ` · “${projectSearch.value.trim()}” 검색 결과` : ""}`;
-    sceneObserver.disconnect();
-    deck.innerHTML = visible.map((p) => {
-      const idx = PROJECTS.indexOf(p);
-      const tone = SCENE_TONE[p.repo] || "lime";
-      const reversed = idx % 2 === 1 ? " is-reversed" : "";
-      return `
-      <div class="scene-slot">
-        <button class="project-scene${reversed}" type="button" data-index="${idx}" aria-label="${p.name} 상세 보기"
-          style="--tone:var(--${tone});--tone-soft:var(--${tone}-soft)" aria-haspopup="dialog">
-          <div class="scene-visual" data-project-number="${String(idx + 1).padStart(2, "0")}">${SCENE_SVG[p.repo] || ""}</div>
-          <div class="scene-copy">
-            <span class="scene-number">${String(idx + 1).padStart(2, "0")}</span>
-            <span class="project-status ${p.live ? "is-live" : ""}">${p.live ? "LIVE" : "GITHUB ONLY"}</span>
-            <h3>${p.name}</h3>
-            <p>${p.tagline}</p>
-            <div class="project-tags">${p.tags.map((t) => `<span class="tag">${t}</span>`).join("")}</div>
-            <span class="scene-cue">상세 보기
-              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h9M8 3l5 5-5 5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            </span>
-          </div>
-        </button>
-      </div>`;
-    }).join("");
-
-    deck.querySelectorAll(".project-scene").forEach((scene) => sceneObserver.observe(scene));
-    requestAnimationFrame(() => {
-      deck.scrollLeft = 0;
-      syncProjectCarousel();
-    });
-  };
-  renderProjectScenes();
-
-  document.querySelectorAll(".filter-button").forEach((button) => {
-    button.addEventListener("click", () => {
-      activeFilter = button.dataset.filter;
-      document.querySelectorAll(".filter-button").forEach((item) => {
-        const selected = item === button;
-        item.classList.toggle("is-selected", selected);
-        item.setAttribute("aria-pressed", String(selected));
-      });
-      renderProjectScenes();
-    });
+    node.replaceWith(...words);
   });
+};
 
-  projectSearch.addEventListener("input", renderProjectScenes);
-  document.getElementById("project-reset").addEventListener("click", () => {
+const blocks = [...document.querySelectorAll(".blk")];
+const finish = blk => {
+  if (!blk.classList.contains("pending")) return;
+  blk.querySelector(".typed").textContent = blk.dataset.cmd;
+  blk.classList.replace("pending", "done");
+};
+const type = blk => {
+  if (motionOff) return finish(blk);
+  const cmd = blk.dataset.cmd, typed = blk.querySelector(".typed");
+  let i = 0;
+  const id = setInterval(() => {
+    if (!blk.classList.contains("pending")) return clearInterval(id);
+    typed.textContent = cmd.slice(0, ++i);
+    if (i >= cmd.length) { clearInterval(id); setTimeout(() => finish(blk), 250); }
+  }, 45);
+};
+const blockObserver = new IntersectionObserver(entries => entries.forEach(entry => {
+  if (!entry.isIntersecting) return;
+  blockObserver.unobserve(entry.target);
+  type(entry.target);
+}), { rootMargin: "0px 0px -15% 0px" });
+blocks.forEach(blk => {
+  blk.insertAdjacentHTML("afterbegin", '<p class="cmd" aria-hidden="true"><span class="ps">csk@portfolio:~$</span> <span class="typed"></span><span class="caret"></span></p>');
+  blk.classList.add("pending");
+  blk.querySelectorAll("[data-reveal]").forEach(splitWords);
+  // Keyboard users never wait on the typing animation.
+  blk.addEventListener("focusin", () => finish(blk));
+  blockObserver.observe(blk);
+});
+applyMotionState();
+
+$("year").textContent = new Date().getFullYear();
+$("stat-projects").textContent = PROJECTS.length;
+$("stat-live").textContent = PROJECTS.filter(p => p.live).length;
+
+const tickClock = () => { $("clock").textContent = new Date().toLocaleTimeString("en-GB", { timeZone: "Asia/Seoul" }); };
+tickClock();
+setInterval(tickClock, 1000);
+
+$("stack-json").innerHTML = `{\n${STACK.map(g => `  <span class="k">"${g.group}"</span>: [${g.items.map(item => `<span class="s">"${item}"</span>`).join(", ")}]`).join(",\n")}\n}`;
+
+// -------------------------------------------------------
+// GitHub data (shared by the repo log + dialog metrics)
+// -------------------------------------------------------
+let repoDataPromise = null;
+const loadRepoData = () => {
+  repoDataPromise ??= fetch(`https://api.github.com/users/${GITHUB_USER}/repos?per_page=100&sort=updated`, {
+    headers: { Accept: "application/vnd.github+json" }, signal: AbortSignal.timeout(8000),
+  })
+    .then(res => (res.ok ? res.json() : Promise.reject(new Error(res.status))))
+    .then(repos => ({ repos, byName: new Map(repos.map(r => [r.name, r])) }))
+    .catch(() => null);
+  return repoDataPromise;
+};
+
+const relative = new Intl.RelativeTimeFormat("ko", { numeric: "auto" });
+const since = date => {
+  const days = Math.round((new Date(date) - Date.now()) / 864e5);
+  if (Math.abs(days) < 30) return relative.format(days, "day");
+  return Math.abs(days) < 365 ? relative.format(Math.round(days / 30), "month") : relative.format(Math.round(days / 365), "year");
+};
+
+loadRepoData().then(data => {
+  const repos = data?.repos
+    .filter(r => !r.fork)
+    .sort((a, b) => new Date(b.pushed_at) - new Date(a.pushed_at))
+    .slice(0, 8);
+  const rows = repos?.length
+    ? repos.map(r => ({ name: r.name, stars: r.stargazers_count, lang: r.language || "—", when: since(r.pushed_at), fresh: Date.now() - new Date(r.pushed_at) < 90 * 864e5 }))
+    : PROJECTS.map(p => ({ name: p.repo, stars: "–", lang: "—", when: "", fresh: false }));
+  $("repo-list").innerHTML = rows.map(r => `
+    <li><a class="row repo" href="https://github.com/${GITHUB_USER}/${encodeURIComponent(r.name)}" target="_blank" rel="noreferrer" data-cursor-text="GitHub ↗">
+      <span class="dot${r.fresh ? " is-fresh" : ""}" aria-hidden="true">●</span><span class="nm">${escapeHTML(r.name)}</span><span class="lang">${escapeHTML(r.lang)}</span><span>★ ${r.stars}</span><span class="when">${r.when}</span>
+    </a></li>`).join("");
+  $("repo-caption").textContent = repos?.length
+    ? `GitHub API에서 불러온 ${rows.length}개 저장소 · ● 최근 90일 내 활동`
+    : "GitHub API에 연결할 수 없어 프로젝트 목록으로 대신합니다.";
+});
+
+// -------------------------------------------------------
+// Projects: segmented filter + grep search
+// -------------------------------------------------------
+const projectList = $("project-list");
+const projectSearch = $("project-search");
+const seg = $("project-filters");
+const segButtons = [...seg.querySelectorAll("[data-filter]")];
+let activeFilter = "all";
+
+segButtons.forEach(button => { button.querySelector(".count").textContent = pad(filterProjects(PROJECTS, button.dataset.filter).length); });
+// The indicator slides between options (SEED SegmentedControl).
+const moveIndicator = () => {
+  const selected = seg.querySelector('[aria-pressed="true"]');
+  seg.style.setProperty("--x", `${selected.offsetLeft}px`);
+  seg.style.setProperty("--w", `${selected.offsetWidth}px`);
+};
+moveIndicator();
+document.fonts.ready.then(moveIndicator);
+addEventListener("resize", moveIndicator, { passive: true });
+
+const renderProjects = () => {
+  const visible = filterProjects(PROJECTS, activeFilter, projectSearch.value);
+  const query = projectSearch.value.trim();
+  projectList.innerHTML = visible.length
+    ? visible.map(p => `
+      <li><button class="row" type="button" data-index="${PROJECTS.indexOf(p)}" aria-haspopup="dialog" data-cursor-text="open →">
+        <span class="perm" aria-hidden="true">drwxr-xr-x</span><span class="st${p.live ? " is-live" : ""}">${p.live ? "live" : "repo"}</span><span class="nm">${p.repo}/</span><span class="ds">${p.tagline}</span>
+      </button></li>`).join("")
+    : '<li class="empty">grep: 일치하는 프로젝트가 없습니다. <button class="text-btn" type="button" id="project-reset">[reset]</button></li>';
+  $("project-results").textContent = `total ${visible.length}${query ? ` · “${query}”` : ""}`;
+};
+
+const setFilter = filter => {
+  activeFilter = filter;
+  segButtons.forEach(button => button.setAttribute("aria-pressed", String(button.dataset.filter === filter)));
+  moveIndicator();
+  renderProjects();
+};
+segButtons.forEach(button => button.addEventListener("click", () => setFilter(button.dataset.filter)));
+projectSearch.addEventListener("input", renderProjects);
+projectList.addEventListener("click", event => {
+  if (event.target.closest("#project-reset")) {
     projectSearch.value = "";
-    document.querySelector('[data-filter="all"]').click();
+    setFilter("all");
     projectSearch.focus();
-  });
-  document.querySelectorAll("[data-view]").forEach(button => {
-    button.addEventListener("click", () => {
-      activeView = button.dataset.view;
-      deck.classList.toggle("is-grid", activeView === "grid");
-      document.querySelectorAll("[data-view]").forEach(item => {
-        const selected = item === button;
-        item.classList.toggle("is-selected", selected);
-        item.setAttribute("aria-pressed", String(selected));
-      });
-      deck.scrollLeft = 0;
-      syncProjectCarousel();
-      onScroll();
-    });
-  });
-  window.addEventListener("resize", syncProjectCarousel, { passive: true });
-
-  // Pointer parallax on the scene artwork + subtle tilt (pointer devices only)
-  if (hasHover) {
-    deck.addEventListener("pointermove", (e) => {
-      if (motionOff) return;
-      const scene = e.target.closest(".project-scene");
-      if (!scene) return;
-      const rect = scene.getBoundingClientRect();
-      const px = (e.clientX - rect.left) / rect.width - 0.5;
-      const py = (e.clientY - rect.top) / rect.height - 0.5;
-      scene.style.setProperty("--pv-x", `${px * -16}px`);
-      scene.style.setProperty("--pv-y", `${py * -12}px`);
-      scene.style.transform = `translateY(-3px) rotateX(${py * -1.2}deg) rotateY(${px * 1.2}deg)`;
-    });
-    deck.addEventListener("pointerout", (e) => {
-      const scene = e.target.closest(".project-scene");
-      if (!scene || (e.relatedTarget && scene.contains(e.relatedTarget))) return;
-      scene.style.transform = "";
-      scene.style.removeProperty("--pv-x");
-      scene.style.removeProperty("--pv-y");
-    });
+    return;
   }
+  const row = event.target.closest("[data-index]");
+  if (row) openProject(Number(row.dataset.index), row);
+});
+renderProjects();
 
-  // -------------------------------------------------------
-  // Modal
-  // -------------------------------------------------------
-  const dialog = document.getElementById("project-dialog");
-  const dialogBody = document.getElementById("dialog-body");
-  let lastTrigger = null;
-  let currentProject = null;
-  let dialogSequence = 0;
-  const escapeHTML = value => String(value).replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
+// -------------------------------------------------------
+// Project dialog (bottom sheet on phones)
+// -------------------------------------------------------
+const dialog = $("project-dialog");
+const dialogBody = $("dialog-body");
+let lastTrigger = null;
+let currentProject = null;
+let dialogSequence = 0;
 
-  const renderMetrics = repoInfo => repoInfo
-      ? `<dl class="metrics-grid">
-          <div class="metric"><dt>Stars</dt><dd>${repoInfo.stargazers_count}</dd></div>
-          <div class="metric"><dt>Language</dt><dd>${escapeHTML(repoInfo.language || "—")}</dd></div>
-          <div class="metric"><dt>Updated</dt><dd>${new Date(repoInfo.pushed_at).toLocaleDateString("ko-KR")}</dd></div>
-        </dl>`
-      : '<p class="dialog-desc">지금은 GitHub 지표를 불러올 수 없습니다. 저장소에서 직접 확인할 수 있습니다.</p>';
+const renderMetrics = repoInfo => repoInfo
+  ? `<dl class="metrics">
+      <div><dt>stars</dt><dd>${repoInfo.stargazers_count}</dd></div>
+      <div><dt>language</dt><dd>${escapeHTML(repoInfo.language || "—")}</dd></div>
+      <div><dt>updated</dt><dd>${new Date(repoInfo.pushed_at).toLocaleDateString("ko-KR")}</dd></div>
+    </dl>`
+  : '<p class="dim total">지금은 GitHub 지표를 불러올 수 없습니다. 저장소에서 직접 확인할 수 있습니다.</p>';
 
-  const renderDialog = project => {
-    const tone = SCENE_TONE[project.repo];
-    const index = PROJECTS.indexOf(project);
-    dialogBody.innerHTML = `
-      <h3 id="dialog-title">${project.name}</h3>
-      <p class="dialog-tagline">${project.tagline}</p>
-      <div class="dialog-preview" style="--tone:var(--${tone});--tone-soft:var(--${tone}-soft)">${SCENE_SVG[project.repo]}</div>
-      <p class="dialog-desc">${project.description}</p>
-      <h4>기술 태그</h4>
-      <div class="dialog-tags">${project.tags.map((t) => `<span class="tag">${t}</span>`).join("")}</div>
-      <h4>실시간 GitHub 지표</h4>
-      <div id="dialog-metrics" aria-live="polite"><p class="dialog-desc">GitHub 지표를 불러오는 중…</p></div>
-      <div class="dialog-links">
-        <a class="btn btn-primary btn-sm" href="${project.github}" target="_blank" rel="noreferrer">GitHub 저장소</a>
-        ${project.live ? `<a class="btn btn-ghost btn-sm" href="${project.live}" target="_blank" rel="noreferrer">라이브 데모</a>` : ""}
-      </div>
-      <div class="dialog-navigation"><button type="button" data-dialog-step="-1" ${index === 0 ? "disabled" : ""}>← 이전 작업</button><span>${String(index + 1).padStart(2, "0")} / 05</span><button type="button" data-dialog-step="1" ${index === PROJECTS.length - 1 ? "disabled" : ""}>다음 작업 →</button></div>
-    `;
-  };
+const renderDialog = project => {
+  const index = PROJECTS.indexOf(project);
+  $("dialog-path").textContent = `cat ./${project.repo}/README.md`;
+  dialogBody.innerHTML = `
+    <h2 class="sheet-title" id="dialog-title">${project.name}</h2>
+    <p class="sheet-tagline">${project.tagline}</p>
+    <p class="sheet-desc">${project.description}</p>
+    <p class="tags">${project.tags.map(t => `<span>#${t}</span>`).join("")}</p>
+    <div id="dialog-metrics" aria-live="polite"><p class="dim total">fetching metrics…</p></div>
+    <div class="sheet-links">
+      <a href="${project.github}" target="_blank" rel="noreferrer" data-cursor-text="GitHub ↗">[github ↗]</a>
+      ${project.live ? `<a href="${project.live}" target="_blank" rel="noreferrer">[live demo ↗]</a>` : ""}
+    </div>
+    <div class="sheet-nav">
+      <button class="text-btn" type="button" data-dialog-step="-1" ${index === 0 ? "disabled" : ""}>← prev</button>
+      <span class="dim">${pad(index + 1)} / ${pad(PROJECTS.length)}</span>
+      <button class="text-btn" type="button" data-dialog-step="1" ${index === PROJECTS.length - 1 ? "disabled" : ""}>next →</button>
+    </div>`;
+};
 
-  const openProject = (index, trigger) => {
-    const project = PROJECTS[index];
-    if (!project) return;
-    currentProject = project;
-    const sequence = ++dialogSequence;
-    if (trigger) lastTrigger = trigger;
-    renderDialog(project);
-    if (!dialog.open) dialog.showModal();
-    dialog.scrollTop = 0;
-    loadRepoData().then((data) => {
-      const repoInfo = data && data.byName.get(project.repo);
-      if (dialog.open && sequence === dialogSequence) document.getElementById("dialog-metrics").innerHTML = renderMetrics(repoInfo);
-    });
-  };
-
-  dialogBody.addEventListener("click", event => {
-    const button = event.target.closest("[data-dialog-step]");
-    if (!button || !currentProject) return;
-    const step = Number(button.dataset.dialogStep);
-    openProject(PROJECTS.indexOf(currentProject) + step);
-    const nextButton = dialogBody.querySelector(`[data-dialog-step="${step}"]`);
-    (nextButton.disabled ? dialog.querySelector(".dialog-close") : nextButton).focus();
+const openProject = (index, trigger) => {
+  const project = PROJECTS[index];
+  if (!project) return;
+  currentProject = project;
+  const sequence = ++dialogSequence;
+  if (trigger) lastTrigger = trigger;
+  renderDialog(project);
+  if (!dialog.open) dialog.showModal();
+  dialog.scrollTop = 0;
+  loadRepoData().then(data => {
+    if (dialog.open && sequence === dialogSequence) $("dialog-metrics").innerHTML = renderMetrics(data?.byName.get(project.repo));
   });
+};
 
-  deck.addEventListener("click", (e) => {
-    const scene = e.target.closest(".project-scene");
-    if (!scene) return;
-    openProject(Number(scene.dataset.index), scene);
-  });
+dialogBody.addEventListener("click", event => {
+  const button = event.target.closest("[data-dialog-step]");
+  if (!button || !currentProject) return;
+  const step = Number(button.dataset.dialogStep);
+  openProject(PROJECTS.indexOf(currentProject) + step);
+  const nextButton = dialogBody.querySelector(`[data-dialog-step="${step}"]`);
+  (nextButton.disabled ? dialog.querySelector("[type=submit]") : nextButton).focus();
+});
+dialog.addEventListener("close", () => {
+  dialogSequence++;
+  currentProject = null;
+  if (lastTrigger?.isConnected) lastTrigger.focus({ preventScroll: true });
+});
 
-  dialog.addEventListener("close", () => {
-    dialogSequence++;
-    currentProject = null;
-    if (lastTrigger && lastTrigger.isConnected) lastTrigger.focus({ preventScroll: true });
-  });
+// Native dialogs close on Escape; also close on a backdrop click.
+const closeOnBackdrop = target => target.addEventListener("click", event => {
+  const rect = target.getBoundingClientRect();
+  if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) target.close();
+});
+closeOnBackdrop(dialog);
 
-  dialog.addEventListener("click", (e) => {
-    const rect = dialog.getBoundingClientRect();
-    const inside =
-      e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
-    if (!inside) dialog.close();
-  });
-
-  // -------------------------------------------------------
-  // Magnetic buttons
-  // -------------------------------------------------------
-  if (hasHover) {
-    document.querySelectorAll(".magnetic").forEach((btn) => {
-      btn.addEventListener("pointermove", (e) => {
-        if (motionOff) return;
-        const rect = btn.getBoundingClientRect();
-        const x = e.clientX - rect.left - rect.width / 2;
-        const y = e.clientY - rect.top - rect.height / 2;
-        btn.style.transform = `translate(${x * 0.25}px, ${y * 0.35}px)`;
-      });
-      btn.addEventListener("pointerleave", () => {
-        btn.style.transform = "";
-      });
-    });
-  }
-
-  // -------------------------------------------------------
-  // Kinetic data collage — pointer parallax + scroll fallback
-  // -------------------------------------------------------
-  const collageGrid = document.getElementById("collage-grid");
-  const sceneCards = [...collageGrid.querySelectorAll(".scene-card")];
-  const collageCounter = document.getElementById("collage-counter");
-  const collageProgress = document.getElementById("collage-progress");
-  sceneCards.forEach((card, i) => {
-    card.style.transitionDelay = `${i * 70}ms`;
-    revealObserver.observe(card);
-  });
-
-  const syncCollageRail = () => {
-    const index = closestRailIndex(collageGrid, sceneCards);
-    collageCounter.textContent = `${String(index + 1).padStart(2, "0")} / ${String(sceneCards.length).padStart(2, "0")}`;
-    collageProgress.style.setProperty("--rail-progress", String((index + 1) / sceneCards.length));
-  };
-  let collageScrollFrame = null;
-  collageGrid.addEventListener("scroll", () => {
-    if (collageScrollFrame) return;
-    collageScrollFrame = requestAnimationFrame(() => {
-      collageScrollFrame = null;
-      syncCollageRail();
-    });
-  }, { passive: true });
-  syncCollageRail();
-
-  if (hasHover) {
-    collageGrid.addEventListener("pointermove", (e) => {
-      if (motionOff) return;
-      const rect = collageGrid.getBoundingClientRect();
-      const dx = (e.clientX - (rect.left + rect.width / 2)) / rect.width;
-      const dy = (e.clientY - (rect.top + rect.height / 2)) / rect.height;
-      sceneCards.forEach((card) => {
-        const depth = parseFloat(card.dataset.depth) || 0.5;
-        card.style.setProperty("--tx", `${dx * 26 * depth}px`);
-        card.style.setProperty("--ty", `${dy * 26 * depth}px`);
-      });
-    });
-    collageGrid.addEventListener("pointerleave", () => {
-      sceneCards.forEach((card) => {
-        card.style.setProperty("--tx", "0px");
-        card.style.setProperty("--ty", "0px");
-      });
-    });
-  }
-
-  const updateCollageScroll = () => {
-    if (hasHover || motionOff) return;
-    const vh = window.innerHeight;
-    sceneCards.forEach((card) => {
-      const rect = card.getBoundingClientRect();
-      const depth = parseFloat(card.dataset.depth) || 0.5;
-      const ratio = (rect.top + rect.height / 2 - vh / 2) / vh;
-      card.style.setProperty("--ty", `${ratio * 18 * depth}px`);
-    });
-  };
-
-  // -------------------------------------------------------
-  // Story — sticky scroll-driven SVG
-  // -------------------------------------------------------
-  const initStory = () => {
-    const svg = document.getElementById("story-svg");
-    const caption = document.getElementById("story-caption");
-    const live = document.getElementById("story-live");
-    const dotEls = [...document.querySelectorAll(".story-dots button")];
-    const track = document.getElementById("story-track");
-    const NS = "http://www.w3.org/2000/svg";
-
-    const COLS = 6;
-    const ROWS = 4;
-    const W = 800;
-    const H = 480;
-    const barHeights = [0.85, 0.45, 0.7, 0.3, 0.6, 0.4];
-    const bottom = H - 60;
-
-    const points = Array.from({ length: COLS * ROWS }, (_, i) => {
-      const col = Math.floor(i / ROWS);
-      const row = i % ROWS;
-      const top = bottom - barHeights[col] * (H - 160);
-      const frac = (ROWS - 1 - row) / (ROWS - 1);
-      return {
-        a: { x: 60 + Math.random() * 680, y: 40 + Math.random() * 400 },
-        b: { x: 110 + col * 116, y: 80 + row * 90 },
-        c: { x: 110 + col * 116, y: bottom - frac * (bottom - top) },
-      };
-    });
-
-    const gridGroup = document.createElementNS(NS, "g");
-    gridGroup.setAttribute("opacity", "0");
-    for (let r = 0; r < ROWS; r++) {
-      const line = document.createElementNS(NS, "line");
-      line.setAttribute("x1", "80");
-      line.setAttribute("x2", "720");
-      line.setAttribute("y1", String(80 + r * 90));
-      line.setAttribute("y2", String(80 + r * 90));
-      line.setAttribute("stroke", "#232a32");
-      gridGroup.appendChild(line);
-    }
-    svg.appendChild(gridGroup);
-
-    const circles = points.map(() => {
-      const c = document.createElementNS(NS, "circle");
-      c.setAttribute("r", "7");
-      c.setAttribute("class", "story-dot");
-      svg.appendChild(c);
-      return c;
-    });
-
-    const stages = [
-      "흩어진 데이터에는 아직 <strong>형태가 없습니다</strong>.",
-      "정제와 검증을 거치며 데이터가 <strong>구조</strong>를 갖춥니다.",
-      "구조는 마침내 누구나 쓸 수 있는 <strong>도구</strong>가 됩니다.",
-    ];
-    const lerp = (a, b, t) => a + (b - a) * t;
-    let lastStage = -1;
-
-    const render = (progress) => {
-      const p = Math.min(Math.max(progress, 0), 1);
-      const seg = p < 0.5 ? 0 : 1;
-      const localT = seg === 0 ? p / 0.5 : (p - 0.5) / 0.5;
-      points.forEach((pt, i) => {
-        const from = seg === 0 ? pt.a : pt.b;
-        const to = seg === 0 ? pt.b : pt.c;
-        circles[i].setAttribute("cx", String(lerp(from.x, to.x, localT)));
-        circles[i].setAttribute("cy", String(lerp(from.y, to.y, localT)));
-        circles[i].classList.toggle("is-resolved", p > 0.66);
-      });
-      gridGroup.setAttribute("opacity", String(Math.min(1, p / 0.55)));
-
-      const stageIndex = p < 0.33 ? 0 : p < 0.66 ? 1 : 2;
-      if (stageIndex !== lastStage) {
-        lastStage = stageIndex;
-        caption.innerHTML = stages[stageIndex];
-        live.textContent = stages[stageIndex].replace(/<[^>]+>/g, "");
-        dotEls.forEach((d, i) => {
-          const active = i === stageIndex;
-          d.classList.toggle("is-active", active);
-          d.setAttribute("aria-selected", String(active));
-          d.tabIndex = active ? 0 : -1;
-        });
-      }
-    };
-
-    render(motionOff ? 1 : 0);
-
-    const stageProgress = [0, 0.5, 1];
-    dotEls.forEach((button, index) => {
-      button.addEventListener("click", () => {
-        if (compactStoryQuery.matches || motionOff) {
-          render(stageProgress[index]);
-          return;
-        }
-        const rect = track.getBoundingClientRect();
-        const top = window.scrollY + rect.top;
-        const total = Math.max(0, rect.height - window.innerHeight);
-        window.scrollTo({ top: top + total * stageProgress[index], behavior: "smooth" });
-      });
-      button.addEventListener("keydown", (event) => {
-        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-        event.preventDefault();
-        const next = event.key === "Home" ? 0 : event.key === "End" ? dotEls.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + dotEls.length) % dotEls.length;
-        dotEls[next].focus();
-        dotEls[next].click();
-      });
-    });
-
-    const update = () => {
-      if (motionOff || compactStoryQuery.matches) return;
-      const rect = track.getBoundingClientRect();
-      const total = rect.height - window.innerHeight;
-      render(total > 0 ? -rect.top / total : 1);
-    };
-
-    return { render, update };
-  };
-  const story = initStory();
-
-  // -------------------------------------------------------
-  // GitHub constellation graph
-  // -------------------------------------------------------
-  const graphPanel = document.getElementById("graph-panel");
-  const svg = document.getElementById("constellation");
-  const caption = document.getElementById("graph-desc");
-  const NS = "http://www.w3.org/2000/svg";
-  const compactGraph = window.matchMedia("(max-width: 640px)").matches;
-  const W = compactGraph ? 380 : 800;
-  const H = compactGraph ? 400 : 440;
-  const CX = W / 2;
-  const CY = H / 2;
-  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
-
-  const el = (tag, attrs) => {
-    const node = document.createElementNS(NS, tag);
-    for (const k in attrs) node.setAttribute(k, attrs[k]);
-    return node;
-  };
-
-  const drawGraph = (nodes) => {
-    svg.innerHTML = "";
-    const group = el("g", { class: "graph-group" });
-    group.style.transformOrigin = `${CX}px ${CY}px`;
-    svg.appendChild(group);
-    const radiusOrbit = Math.min(W, H) / 2 - 70;
-
-    group.appendChild(el("circle", { cx: CX, cy: CY, r: 26, class: "node-dot", fill: "#d7ff3f", "fill-opacity": 0.9 }));
-    const centerLabel = el("text", { x: CX, y: CY + 4, "text-anchor": "middle", class: "node-label graph-center-label" });
-    centerLabel.textContent = compactGraph ? "CSK" : GITHUB_USER;
-    group.appendChild(centerLabel);
-
-    const now = Date.now();
-    const NINETY_DAYS = 90 * 24 * 60 * 60 * 1000;
-
-    nodes.forEach((n, i) => {
-      const angle = (i / nodes.length) * Math.PI * 2 - Math.PI / 2;
-      const x = CX + radiusOrbit * Math.cos(angle);
-      const y = CY + radiusOrbit * Math.sin(angle);
-      const active = n.pushed_at ? now - new Date(n.pushed_at).getTime() < NINETY_DAYS : false;
-      const r = 8 + Math.min(14, (n.stars || 0) * 2);
-
-      group.appendChild(el("line", { x1: CX, y1: CY, x2: x, y2: y, class: "edge-line" }));
-
-      const link = el("a", { href: `https://github.com/${GITHUB_USER}/${encodeURIComponent(n.name)}`, target: "_blank", rel: "noreferrer", tabindex: "0", class: "graph-node", "aria-label": `${n.name} GitHub 저장소 열기` });
-      const title = el("title", {});
-      title.textContent = `${n.name} · ${n.stars || 0} stars`;
-      link.appendChild(title);
-      link.appendChild(
-        el("circle", {
-          cx: x,
-          cy: y,
-          r,
-          fill: "#5be8ff",
-          "fill-opacity": active ? 0.9 : 0.45,
-          class: "node-dot" + (active ? " is-active" : ""),
-        })
-      );
-
-      const label = el("text", { x, y: y + r + 16, "text-anchor": "middle", class: "node-label" });
-      label.textContent = compactGraph && n.name.length > 13 ? `${n.name.slice(0, 12)}…` : n.name;
-      link.appendChild(label);
-      group.appendChild(link);
-    });
-  };
-
-  loadRepoData().then((data) => {
-    if (data && data.repos.length) {
-      const nodes = data.repos
-        .filter((r) => !r.fork)
-        .sort((a, b) => new Date(b.pushed_at) - new Date(a.pushed_at))
-        .slice(0, compactGraph ? 6 : 10)
-        .map((r) => ({ name: r.name, stars: r.stargazers_count, pushed_at: r.pushed_at }));
-      drawGraph(nodes);
-      caption.textContent = `GitHub API에서 실시간으로 불러온 ${nodes.length}개 저장소 · 밝은 노드 = 최근 90일 내 활동`;
-    } else {
-      const nodes = PROJECTS.map((p) => ({ name: p.repo, stars: 0, pushed_at: null }));
-      drawGraph(nodes);
-      caption.textContent = "실시간 데이터를 불러올 수 없어 정적 프로젝트 목록으로 표시합니다.";
-    }
-  });
-
-  new IntersectionObserver(([entry]) => graphPanel.classList.toggle("in-view", entry.isIntersecting), {
-    threshold: 0,
-  }).observe(graphPanel);
-
-  if (hasHover) {
-    graphPanel.addEventListener("pointermove", (e) => {
-      if (motionOff) return;
-      const rect = graphPanel.getBoundingClientRect();
-      const px = (e.clientX - rect.left) / rect.width - 0.5;
-      const py = (e.clientY - rect.top) / rect.height - 0.5;
-      svg.style.transform = `rotateX(${py * -4}deg) rotateY(${px * 4}deg)`;
-    });
-    graphPanel.addEventListener("pointerleave", () => {
-      svg.style.transform = "";
-    });
-  }
-
-  // -------------------------------------------------------
-  // Interactive data explorer, with one animation loop and static motion-off states.
-  // -------------------------------------------------------
-  const heroField = initSignalExplorer(() => motionOff);
-  const motionEdition = initMotionEdition(() => motionOff);
-
-  motionToggle.addEventListener("click", () => {
-    motionOff = !motionOff;
-    savedMotion = motionOff ? "off" : "on";
-    try { localStorage.setItem("motion", savedMotion); } catch { /* Keep the current preference in memory. */ }
-    applyMotionState();
-    heroField.onMotionChange();
-    motionEdition.onMotionChange();
-    if (motionOff) story.render(1);
-    onScroll();
-  });
-
-  reducedMotionQuery.addEventListener("change", event => {
-    if (savedMotion !== null) return;
-    motionOff = event.matches;
-    applyMotionState();
-    heroField.onMotionChange();
-    motionEdition.onMotionChange();
-    if (motionOff) story.render(1);
-    onScroll();
-  });
-
-  // Quick navigation: native dialog handles Escape, focus containment, and touch.
-  const quickDialog = document.getElementById("quick-dialog");
-  const quickSearch = document.getElementById("quick-search");
-  const quickResults = document.getElementById("quick-results");
-  const quickOpen = document.getElementById("quick-open");
-  let quickTrigger = quickOpen;
-  let quickMatches = [];
-  const quickItems = [
-    { name: "홈 · Signal Explorer", section: "top", group: "SECTION" },
-    { name: "데이터가 도구가 되는 과정", section: "story", group: "SECTION" },
-    { name: "GitHub 활동 그래프", section: "graph", group: "SECTION" },
-    { name: "소개 · 관심 분야", section: "about", group: "SECTION" },
-    { name: "프로젝트 · 작업 모아보기", section: "projects", group: "SECTION" },
-    { name: "스택 · 사용하는 기술", section: "stack", group: "SECTION" },
-    { name: "연락 · 함께 만드는 다음 신호", section: "contact", group: "SECTION" },
-    ...PROJECTS.map((project, index) => ({ name: project.name, keywords: project.tagline + " " + project.tags.join(" "), index, group: "PROJECT" })),
-  ];
-  const renderQuickResults = () => {
-    const query = quickSearch.value.trim().toLocaleLowerCase();
-    quickMatches = quickItems.filter(item => `${item.name} ${item.keywords || ""}`.toLocaleLowerCase().includes(query));
-    quickResults.innerHTML = quickMatches.map((item, i) => `<button type="button" class="quick-result" data-quick-index="${i}"><span>${escapeHTML(item.name)}</span><small>${item.group} ↗</small></button>`).join("");
-    document.getElementById("quick-empty").hidden = quickMatches.length !== 0;
-  };
-  const openQuick = () => {
-    if (dialog.open || quickDialog.open) return;
-    quickTrigger = document.activeElement;
-    quickSearch.value = "";
-    renderQuickResults();
-    quickDialog.showModal();
-    quickSearch.focus();
-  };
-  quickOpen.addEventListener("click", openQuick);
-  quickSearch.addEventListener("input", renderQuickResults);
-  document.getElementById("quick-close").addEventListener("click", () => quickDialog.close());
-  quickDialog.addEventListener("close", () => {
-    if (!dialog.open && quickTrigger?.isConnected) quickTrigger.focus({ preventScroll: true });
-  });
-  quickResults.addEventListener("click", event => {
-    const button = event.target.closest("[data-quick-index]");
-    if (!button) return;
-    const item = quickMatches[Number(button.dataset.quickIndex)];
-    quickDialog.close();
-    if (item.section) {
-      const section = document.getElementById(item.section);
-      section.scrollIntoView({ behavior: motionOff ? "instant" : "smooth" });
-      // Restore focus to the destination after the native dialog restores its trigger.
-      requestAnimationFrame(() => {
-        section.tabIndex = -1;
-        section.focus({ preventScroll: true });
-      });
-    } else openProject(item.index, quickOpen);
-  });
-  quickDialog.addEventListener("keydown", event => {
-    const buttons = [...quickResults.querySelectorAll("button")];
-    if (!buttons.length) return;
-    const current = buttons.indexOf(document.activeElement);
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-      event.preventDefault();
-      const index = current === -1 ? (event.key === "ArrowDown" ? 0 : buttons.length - 1) : (current + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length;
-      buttons[index].focus();
-    } else if (event.key === "Enter" && document.activeElement === quickSearch) {
-      event.preventDefault();
-      buttons[0].click();
-    }
-  });
-  quickDialog.addEventListener("click", event => {
-    const rect = quickDialog.getBoundingClientRect();
-    if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) quickDialog.close();
-  });
-  const isApple = /Mac|iPhone|iPad/.test(navigator.platform);
-  quickOpen.querySelector("kbd").textContent = isApple ? "⌘ K" : "Ctrl K";
-  document.addEventListener("keydown", event => {
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-      event.preventDefault();
-      if (quickDialog.open) quickDialog.close();
-      else openQuick();
-    }
-  });
-
-  document.getElementById("copy-profile").addEventListener("click", async () => {
-    const status = document.getElementById("copy-status");
-    try {
-      await navigator.clipboard.writeText(`https://github.com/${GITHUB_USER}`);
-      status.textContent = "프로필 링크를 복사했습니다.";
-    } catch {
-      status.textContent = `복사할 수 없습니다. 이 주소를 선택해 복사해 주세요: https://github.com/${GITHUB_USER}`;
-    }
-  });
-
-  // -------------------------------------------------------
-  // Header pill morph + scroll progress (single rAF-throttled loop)
-  // -------------------------------------------------------
-  const header = document.getElementById("site-header");
-  const progressBar = document.getElementById("scroll-progress-bar");
-  const desktopLinks = [...document.querySelectorAll(".site-nav a")];
-  const updateDesktopNav = () => {
-    const marker = window.scrollY + window.innerHeight * .35;
-    const current = desktopLinks.reduce((active, link) => {
-      const section = document.querySelector(link.getAttribute("href"));
-      return section.offsetTop <= marker ? link : active;
-    }, desktopLinks[0]);
-    desktopLinks.forEach(link => {
-      const active = link === current;
-      link.classList.toggle("is-active", active);
-      if (active) link.setAttribute("aria-current", "location");
-      else link.removeAttribute("aria-current");
-    });
-  };
-
-  const updateProgress = () => {
-    const max = document.documentElement.scrollHeight - window.innerHeight;
-    progressBar.style.transform = `scaleX(${max > 0 ? window.scrollY / max : 0})`;
-  };
-  const updateHeaderCondense = () => {
-    header.classList.toggle("is-condensed", window.scrollY > 80);
-  };
-
-  let scrollScheduled = false;
-  function onScroll() {
-    if (scrollScheduled) return;
-    scrollScheduled = true;
+// -------------------------------------------------------
+// Quick navigation (⌘K / Ctrl K)
+// -------------------------------------------------------
+const quickDialog = $("quick-dialog");
+const quickSearch = $("quick-search");
+const quickResults = $("quick-results");
+const quickOpen = $("quick-open");
+let quickTrigger = quickOpen;
+let quickMatches = [];
+const quickItems = [
+  { name: "~ whoami", section: "top", group: "cd" },
+  { name: "./projects · 프로젝트", section: "projects", group: "cd" },
+  { name: "gh repo list · GitHub 활동", section: "log", group: "cd" },
+  { name: "about.md · 소개", section: "about", group: "cd" },
+  { name: "stack.json · 기술 스택", section: "stack", group: "cd" },
+  { name: "contact.sh · 연락", section: "contact", group: "cd" },
+  ...PROJECTS.map((project, index) => ({ name: project.name, keywords: `${project.repo} ${project.tagline} ${project.tags.join(" ")}`, index, group: "open" })),
+];
+const renderQuickResults = () => {
+  const query = quickSearch.value.trim().toLocaleLowerCase();
+  quickMatches = quickItems.filter(item => `${item.name} ${item.keywords || ""}`.toLocaleLowerCase().includes(query));
+  quickResults.innerHTML = quickMatches.map((item, i) => `<button type="button" data-quick-index="${i}"><span>${escapeHTML(item.name)}</span><small>${item.group}</small></button>`).join("");
+  $("quick-empty").hidden = quickMatches.length !== 0;
+};
+const openQuick = () => {
+  if (dialog.open || quickDialog.open) return;
+  quickTrigger = document.activeElement;
+  quickSearch.value = "";
+  renderQuickResults();
+  quickDialog.showModal();
+  quickSearch.focus();
+};
+quickOpen.addEventListener("click", openQuick);
+quickSearch.addEventListener("input", renderQuickResults);
+quickDialog.addEventListener("close", () => {
+  if (!dialog.open && quickTrigger?.isConnected) quickTrigger.focus({ preventScroll: true });
+});
+quickResults.addEventListener("click", event => {
+  const button = event.target.closest("[data-quick-index]");
+  if (!button) return;
+  const item = quickMatches[Number(button.dataset.quickIndex)];
+  quickDialog.close();
+  if (item.section) {
+    const section = $(item.section);
+    section.scrollIntoView({ behavior: motionOff ? "instant" : "smooth" });
+    // Restore focus to the destination after the native dialog restores its trigger.
     requestAnimationFrame(() => {
-      scrollScheduled = false;
-      updateProgress();
-      updateHeaderCondense();
-      updateMobileDock();
-      updateDesktopNav();
-      story.update();
-      updateCollageScroll();
+      section.tabIndex = -1;
+      section.focus({ preventScroll: true });
     });
+  } else openProject(item.index, quickOpen);
+});
+quickDialog.addEventListener("keydown", event => {
+  const buttons = [...quickResults.querySelectorAll("button")];
+  if (!buttons.length) return;
+  const current = buttons.indexOf(document.activeElement);
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    event.preventDefault();
+    const down = event.key === "ArrowDown";
+    buttons[current === -1 ? (down ? 0 : buttons.length - 1) : (current + (down ? 1 : -1) + buttons.length) % buttons.length].focus();
+  } else if (event.key === "Enter" && document.activeElement === quickSearch) {
+    event.preventDefault();
+    buttons[0].click();
   }
-  window.addEventListener("scroll", onScroll, { passive: true });
-  onScroll();
-})();
+});
+closeOnBackdrop(quickDialog);
+quickOpen.textContent = !hasHover ? "[⌕]" : /Mac|iPhone|iPad/.test(navigator.platform) ? "[⌘K]" : "[ctrl K]";
+document.addEventListener("keydown", event => {
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+    event.preventDefault();
+    if (quickDialog.open) quickDialog.close();
+    else openQuick();
+  }
+});
+
+// -------------------------------------------------------
+// Copy link → snackbar (SEED Snackbar)
+// -------------------------------------------------------
+const snackbar = $("snackbar");
+let snackTimer = 0;
+const toast = message => {
+  snackbar.textContent = message;
+  snackbar.classList.add("is-open");
+  clearTimeout(snackTimer);
+  snackTimer = setTimeout(() => snackbar.classList.remove("is-open"), 3000);
+};
+$("copy-profile").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(`https://github.com/${GITHUB_USER}`);
+    toast("✓ 프로필 링크를 복사했습니다.");
+  } catch {
+    toast(`복사할 수 없습니다: https://github.com/${GITHUB_USER}`);
+  }
+});
+
+// -------------------------------------------------------
+// Cursor (SEED landing CustomCursor): caret → selection box over controls → labelled tag over rows
+// -------------------------------------------------------
+if (hasHover) {
+  const cursor = $("cursor");
+  const label = cursor.firstElementChild;
+  const PILLS = ["var(--acc)", "var(--warm)"];
+  const pos = { x: -100, y: -100 }, aim = { x: -100, y: -100 };
+  let frame = 0, hovered = null;
+  const follow = () => {
+    pos.x += (aim.x - pos.x) * 0.35;
+    pos.y += (aim.y - pos.y) * 0.35;
+    cursor.style.transform = `translate(${pos.x}px, ${pos.y}px)`;
+    frame = Math.abs(aim.x - pos.x) + Math.abs(aim.y - pos.y) > 0.2 ? requestAnimationFrame(follow) : 0;
+  };
+  addEventListener("pointermove", event => {
+    aim.x = event.clientX;
+    aim.y = event.clientY;
+    frame ||= requestAnimationFrame(follow);
+  }, { passive: true });
+  document.addEventListener("pointerover", event => {
+    const hit = event.target.closest("input, a, button, [data-cursor], [data-cursor-text]");
+    if (hit === hovered) return;
+    hovered = hit;
+    const text = hit?.dataset.cursorText;
+    cursor.dataset.mode = !hit ? "dot" : hit.matches("input") ? "off" : text ? "text" : "ring";
+    // The tag color is picked once per target, so moving inside a row doesn't reshuffle it.
+    if (text) {
+      label.textContent = text;
+      cursor.style.setProperty("--pill", PILLS[Math.random() * PILLS.length | 0]);
+    }
+  });
+  document.documentElement.addEventListener("pointerleave", () => { hovered = null; cursor.dataset.mode = "off"; });
+  document.documentElement.classList.add("has-cursor");
+}
+
+// -------------------------------------------------------
+// Motion toggle + the ASCII art (three.js from CDN; the static banner stays if it fails)
+// -------------------------------------------------------
+const setMotion = off => {
+  motionOff = off;
+  applyMotionState();
+};
+$("motion-toggle").addEventListener("click", () => {
+  savedMotion = motionOff ? "on" : "off";
+  try { localStorage.setItem("motion", savedMotion); } catch { /* Keep the current preference in memory. */ }
+  setMotion(savedMotion === "off");
+});
+reducedMotionQuery.addEventListener("change", event => { if (savedMotion === null) setMotion(event.matches); });
+
+import("./ascii-art.js")
+  .then(module => module.initAsciiArt(isMotionOff))
+  .then(controller => { art = controller; })
+  .catch(error => console.warn("ASCII art unavailable:", error));
