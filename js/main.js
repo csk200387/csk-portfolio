@@ -399,4 +399,8 @@ reducedMotionQuery.addEventListener("change", event => { if (savedMotion === nul
 import("./ascii-art.js")
   .then(module => module.initAsciiArt(isMotionOff))
   .then(controller => { art = controller; })
-  .catch(error => console.warn("ASCII art unavailable:", error));
+  .catch(error => {
+    console.warn("ASCII art unavailable:", error);
+    $("art").classList.add("is-static");
+    $("dims").textContent = "static";
+  });

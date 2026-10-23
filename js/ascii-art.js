@@ -69,7 +69,7 @@ export async function initAsciiArt(isMotionOff) {
     eyeAt(camera, vp.x, vp.y, 0, 0.05);  // centered like the GitHub avatar (50% across, 47.5% down)
     renderer.render(scene, camera);
     if (graphic) return;
-    readCtx.drawImage(renderer.domElement, 0, 0);
+    readCtx.drawImage(renderer.domElement, 0, 0, S, S);  // scaled: the canvas can still be graphic-sized while it fades out
     const d = readCtx.getImageData(0, 0, S, S).data, cw = S / COLS, ch = S / ROWS;
     let a = "", b = "";
     for (let r = 0; r < ROWS; r++) {
@@ -124,12 +124,14 @@ export async function initAsciiArt(isMotionOff) {
   const viewButton = document.getElementById("art-view");
   viewButton.addEventListener("click", () => {
     graphic = !graphic;
-    art.closest(".art-col").classList.toggle("is-graphic", graphic);
+    art.classList.toggle("is-graphic", graphic);
     viewButton.setAttribute("aria-pressed", String(graphic));
     document.getElementById("dims").textContent = graphic ? "WebGL" : `${COLS}×${ROWS} chars`;
     document.getElementById("art-hint").textContent = graphic ? "hover to steer the shadow" : "hover · click to re-decode";
     t0 = performance.now();  // back in ASCII, the decode sweep replays
-    paint();
+    // Leaving the graphic, keep it painted until the canvas has faded out (--d6) so no ASCII-palette frame shows.
+    if (graphic || isMotionOff()) paint();
+    else setTimeout(() => { if (!graphic) paint(); }, 300);
   });
   art.prepend(renderer.domElement);
   viewButton.hidden = false;
