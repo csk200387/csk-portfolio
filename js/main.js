@@ -1,10 +1,9 @@
-import { PROJECTS, STACK } from "./portfolio-data.js";
+import { escapeHTML, parseProjects, parseStack, renderMarkdown } from "./content.js";
 import { filterProjects } from "./signal-model.js";
 
 const GITHUB_USER = "csk200387";
 const $ = id => document.getElementById(id);
 const pad = n => String(n).padStart(2, "0");
-const escapeHTML = value => String(value).replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
 const hasHover = matchMedia("(hover: hover) and (pointer: fine)").matches;
 
 // -------------------------------------------------------
@@ -80,14 +79,37 @@ blocks.forEach(blk => {
 applyMotionState();
 
 $("year").textContent = new Date().getFullYear();
-$("stat-projects").textContent = PROJECTS.length;
-$("stat-live").textContent = PROJECTS.filter(p => p.live).length;
 
 const tickClock = () => { $("clock").textContent = new Date().toLocaleTimeString("en-GB", { timeZone: "Asia/Seoul" }); };
 tickClock();
 setInterval(tickClock, 1000);
 
-$("stack-json").innerHTML = `{\n${STACK.map(g => `  <span class="k">"${g.group}"</span>: [${g.items.map(item => `<span class="s">"${item}"</span>`).join(", ")}]`).join(",\n")}\n}`;
+// -------------------------------------------------------
+// Content: content/*.md in the repo — edit them on GitHub and the page follows
+// -------------------------------------------------------
+let projects = [];
+const read = name => fetch(`content/${name}`, { cache: "no-cache" })
+  .then(res => (res.ok ? res.text() : Promise.reject(new Error(`${name}: ${res.status}`))));
+const unreadable = name => `<span class="dim">cat: content/${name}: 불러올 수 없습니다</span>`;
+
+read("about.md").then(md => {
+  $("about-md").innerHTML = renderMarkdown(md);
+  if ($("about").classList.contains("pending")) $("about-md").querySelectorAll("p").forEach(splitWords);
+}).catch(() => { $("about-md").innerHTML = `<p>${unreadable("about.md")}</p>`; });
+
+read("stack.md").then(md => {
+  $("stack-json").innerHTML = `{\n${parseStack(md).map(g => `  <span class="k">"${escapeHTML(g.group)}"</span>: [${g.items.map(item => `<span class="s">"${escapeHTML(item)}"</span>`).join(", ")}]`).join(",\n")}\n}`;
+}).catch(() => { $("stack-json").innerHTML = unreadable("stack.md"); });
+
+// Resolves either way; the project UI below fills in once it lands.
+const projectsReady = read("projects.md").then(md => {
+  projects = parseProjects(md);
+  $("stat-projects").textContent = projects.length;
+  $("stat-live").textContent = projects.filter(p => p.live).length;
+  segButtons.forEach(button => { button.querySelector(".count").textContent = pad(filterProjects(projects, button.dataset.filter).length); });
+  moveIndicator();
+  renderProjects();
+}).catch(() => { projectList.innerHTML = `<li class="empty">${unreadable("projects.md")}</li>`; });
 
 // -------------------------------------------------------
 // GitHub data (shared by the repo log + dialog metrics)
@@ -110,14 +132,15 @@ const since = date => {
   return Math.abs(days) < 365 ? relative.format(Math.round(days / 30), "month") : relative.format(Math.round(days / 365), "year");
 };
 
-loadRepoData().then(data => {
+// Waits for projects.md too: without the API, the project list stands in.
+Promise.all([loadRepoData(), projectsReady]).then(([data]) => {
   const repos = data?.repos
     .filter(r => !r.fork)
     .sort((a, b) => new Date(b.pushed_at) - new Date(a.pushed_at))
     .slice(0, 8);
   const rows = repos?.length
     ? repos.map(r => ({ name: r.name, stars: r.stargazers_count, lang: r.language || "—", when: since(r.pushed_at), fresh: Date.now() - new Date(r.pushed_at) < 90 * 864e5 }))
-    : PROJECTS.map(p => ({ name: p.repo, stars: "–", lang: "—", when: "", fresh: false }));
+    : projects.map(p => ({ name: p.repo, stars: "–", lang: "—", when: "", fresh: false }));
   $("repo-list").innerHTML = rows.map(r => `
     <li><a class="row repo" href="https://github.com/${GITHUB_USER}/${encodeURIComponent(r.name)}" target="_blank" rel="noreferrer" data-cursor-text="GitHub ↗">
       <span class="dot${r.fresh ? " is-fresh" : ""}" aria-hidden="true">●</span><span class="nm">${escapeHTML(r.name)}</span><span class="lang">${escapeHTML(r.lang)}</span><span>★ ${r.stars}</span><span class="when">${r.when}</span>
@@ -135,8 +158,6 @@ const projectSearch = $("project-search");
 const seg = $("project-filters");
 const segButtons = [...seg.querySelectorAll("[data-filter]")];
 let activeFilter = "all";
-
-segButtons.forEach(button => { button.querySelector(".count").textContent = pad(filterProjects(PROJECTS, button.dataset.filter).length); });
 // The indicator slides between options (SEED SegmentedControl).
 const moveIndicator = () => {
   const selected = seg.querySelector('[aria-pressed="true"]');
@@ -148,12 +169,12 @@ document.fonts.ready.then(moveIndicator);
 addEventListener("resize", moveIndicator, { passive: true });
 
 const renderProjects = () => {
-  const visible = filterProjects(PROJECTS, activeFilter, projectSearch.value);
+  const visible = filterProjects(projects, activeFilter, projectSearch.value);
   const query = projectSearch.value.trim();
   projectList.innerHTML = visible.length
     ? visible.map(p => `
-      <li><button class="row" type="button" data-index="${PROJECTS.indexOf(p)}" aria-haspopup="dialog" data-cursor-text="open →">
-        <span class="perm" aria-hidden="true">drwxr-xr-x</span><span class="st${p.live ? " is-live" : ""}">${p.live ? "live" : "repo"}</span><span class="nm">${p.repo}/</span><span class="ds">${p.tagline}</span>
+      <li><button class="row" type="button" data-index="${projects.indexOf(p)}" aria-haspopup="dialog" data-cursor-text="open →">
+        <span class="perm" aria-hidden="true">drwxr-xr-x</span><span class="st${p.live ? " is-live" : ""}">${p.live ? "live" : "repo"}</span><span class="nm">${escapeHTML(p.repo)}/</span><span class="ds">${escapeHTML(p.tagline)}</span>
       </button></li>`).join("")
     : '<li class="empty">grep: 일치하는 프로젝트가 없습니다. <button class="text-btn" type="button" id="project-reset">[reset]</button></li>';
   $("project-results").textContent = `total ${visible.length}${query ? ` · “${query}”` : ""}`;
@@ -177,7 +198,6 @@ projectList.addEventListener("click", event => {
   const row = event.target.closest("[data-index]");
   if (row) openProject(Number(row.dataset.index), row);
 });
-renderProjects();
 
 // -------------------------------------------------------
 // Project dialog (bottom sheet on phones)
@@ -197,27 +217,27 @@ const renderMetrics = repoInfo => repoInfo
   : '<p class="dim total">지금은 GitHub 지표를 불러올 수 없습니다. 저장소에서 직접 확인할 수 있습니다.</p>';
 
 const renderDialog = project => {
-  const index = PROJECTS.indexOf(project);
+  const index = projects.indexOf(project);
   $("dialog-path").textContent = `cat ./${project.repo}/README.md`;
   dialogBody.innerHTML = `
-    <h2 class="sheet-title" id="dialog-title">${project.name}</h2>
-    <p class="sheet-tagline">${project.tagline}</p>
-    <p class="sheet-desc">${project.description}</p>
-    <p class="tags">${project.tags.map(t => `<span>#${t}</span>`).join("")}</p>
+    <h2 class="sheet-title" id="dialog-title">${escapeHTML(project.name)}</h2>
+    <p class="sheet-tagline">${escapeHTML(project.tagline)}</p>
+    <p class="sheet-desc">${escapeHTML(project.description)}</p>
+    <p class="tags">${project.tags.map(t => `<span>#${escapeHTML(t)}</span>`).join("")}</p>
     <div id="dialog-metrics" aria-live="polite"><p class="dim total">fetching metrics…</p></div>
     <div class="sheet-links">
-      <a href="${project.github}" target="_blank" rel="noreferrer" data-cursor-text="GitHub ↗">[github ↗]</a>
-      ${project.live ? `<a href="${project.live}" target="_blank" rel="noreferrer">[live demo ↗]</a>` : ""}
+      <a href="${escapeHTML(project.github)}" target="_blank" rel="noreferrer" data-cursor-text="GitHub ↗">[github ↗]</a>
+      ${project.live ? `<a href="${escapeHTML(project.live)}" target="_blank" rel="noreferrer">[live demo ↗]</a>` : ""}
     </div>
     <div class="sheet-nav">
       <button class="text-btn" type="button" data-dialog-step="-1" ${index === 0 ? "disabled" : ""}>← prev</button>
-      <span class="dim">${pad(index + 1)} / ${pad(PROJECTS.length)}</span>
-      <button class="text-btn" type="button" data-dialog-step="1" ${index === PROJECTS.length - 1 ? "disabled" : ""}>next →</button>
+      <span class="dim">${pad(index + 1)} / ${pad(projects.length)}</span>
+      <button class="text-btn" type="button" data-dialog-step="1" ${index === projects.length - 1 ? "disabled" : ""}>next →</button>
     </div>`;
 };
 
 const openProject = (index, trigger) => {
-  const project = PROJECTS[index];
+  const project = projects[index];
   if (!project) return;
   currentProject = project;
   const sequence = ++dialogSequence;
@@ -234,7 +254,7 @@ dialogBody.addEventListener("click", event => {
   const button = event.target.closest("[data-dialog-step]");
   if (!button || !currentProject) return;
   const step = Number(button.dataset.dialogStep);
-  openProject(PROJECTS.indexOf(currentProject) + step);
+  openProject(projects.indexOf(currentProject) + step);
   const nextButton = dialogBody.querySelector(`[data-dialog-step="${step}"]`);
   (nextButton.disabled ? dialog.querySelector("[type=submit]") : nextButton).focus();
 });
@@ -260,18 +280,18 @@ const quickResults = $("quick-results");
 const quickOpen = $("quick-open");
 let quickTrigger = quickOpen;
 let quickMatches = [];
-const quickItems = [
+const quickItems = () => [
   { name: "~ whoami", section: "top", group: "cd" },
   { name: "./projects · 프로젝트", section: "projects", group: "cd" },
   { name: "gh repo list · GitHub 활동", section: "log", group: "cd" },
   { name: "about.md · 소개", section: "about", group: "cd" },
   { name: "stack.json · 기술 스택", section: "stack", group: "cd" },
   { name: "contact.sh · 연락", section: "contact", group: "cd" },
-  ...PROJECTS.map((project, index) => ({ name: project.name, keywords: `${project.repo} ${project.tagline} ${project.tags.join(" ")}`, index, group: "open" })),
+  ...projects.map((project, index) => ({ name: project.name, keywords: `${project.repo} ${project.tagline} ${project.tags.join(" ")}`, index, group: "open" })),
 ];
 const renderQuickResults = () => {
   const query = quickSearch.value.trim().toLocaleLowerCase();
-  quickMatches = quickItems.filter(item => `${item.name} ${item.keywords || ""}`.toLocaleLowerCase().includes(query));
+  quickMatches = quickItems().filter(item => `${item.name} ${item.keywords || ""}`.toLocaleLowerCase().includes(query));
   quickResults.innerHTML = quickMatches.map((item, i) => `<button type="button" data-quick-index="${i}"><span>${escapeHTML(item.name)}</span><small>${item.group}</small></button>`).join("");
   $("quick-empty").hidden = quickMatches.length !== 0;
 };

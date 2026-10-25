@@ -14,6 +14,16 @@ AI·빅데이터공학 전공자로서 데이터 품질, 프라이버시 우선 
 - [SEED Design](https://github.com/daangn/seed-design)에서 가져온 인터랙션: 모션 토큰(duration·easing), 누름 스케일 피드백, 단어 단위 리빌, 커스텀 커서(캐럿 → 선택 박스 → 라벨 태그), 세그먼트 인디케이터, 스낵바, 바텀 시트
 - 모션 토글과 `prefers-reduced-motion` 지원. 모션이 꺼져 있거나 아트가 화면 밖에 있으면 렌더 루프 중단
 
+## 내용 수정
+
+소개·프로젝트·스택은 `content/` 폴더의 마크다운 파일에서 읽어 옵니다. GitHub 웹에서 파일을 고쳐 `main`에 커밋하면 GitHub Pages가 다시 배포한 뒤 사이트에 반영됩니다(캐시 때문에 몇 분 걸릴 수 있음).
+
+- `content/about.md`: `cat about.md` 블록. 제목(`#`, `##`), 문단, `- ` 목록, `**굵게**`, `` `코드` ``, `[링크](https://…)`를 지원합니다.
+- `content/projects.md`: `ls -l ./projects` 목록과 상세 창. 프로젝트마다 `## 이름` 아래에 `- repo:`, `- tagline:`(필수), `- type:`, `- tags:`, `- live:` 필드와 설명 문단을 적습니다. 자세한 형식은 파일 맨 위 주석에 있습니다.
+- `content/stack.md`: `cat stack.json` 블록. `## 그룹` 아래에 `- 항목`을 나열합니다.
+
+`.nojekyll`이 있어야 GitHub Pages가 `.md` 파일을 HTML로 바꾸지 않고 그대로 제공합니다.
+
 ## 로컬 실행
 
 프로젝트 루트에서 정적 서버를 실행한 뒤 브라우저로 엽니다.
@@ -28,7 +38,7 @@ ES modules를 사용하므로 HTML 파일을 직접 열기보다 위의 로컬 �
 
 ## 확인
 
-Node.js에서 실제 프로젝트 검색 동작을 검증할 수 있습니다. 외부 패키지를 설치할 필요가 없습니다.
+Node.js에서 `content/*.md` 형식과 실제 프로젝트 검색 동작을 검증할 수 있습니다. 마크다운을 고친 뒤 실행하면 형식 실수를 잡을 수 있습니다. 외부 패키지를 설치할 필요가 없습니다.
 
 ```bash
 node --test tests/*.test.mjs
@@ -36,7 +46,8 @@ node --test tests/*.test.mjs
 
 ## 파일
 
-- `js/portfolio-data.js`: 프로젝트·기술 스택 콘텐츠
+- `content/*.md`: 소개·프로젝트·기술 스택 콘텐츠
+- `js/content.js`: 마크다운 파서(프로젝트·스택·소개)
 - `js/signal-model.js`: 프로젝트 검색 로직
 - `js/ascii-art.js`: three.js 렌더링을 문자로 변환하는 ASCII 아트
 - `js/main.js`: 터미널 블록, 프로젝트, 대화상자, 빠른 탐색, GitHub 연동, 커서

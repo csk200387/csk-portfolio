@@ -112,9 +112,11 @@ button:active { transform: scale(var(--s97)); }
 .md { max-width: 36em; font-family: "Noto Sans KR", sans-serif; }
 .md :is(h2, h3) { margin: 18px 0 6px; font-family: "IBM Plex Mono", monospace; font-size: 15px; color: var(--acc); }
 .md h2 { margin-top: 0; }
-.focus { list-style: none; }
-.focus li { padding: 6px 0; border-bottom: 1px dashed var(--line); font-size: 14px; }
-.focus b { display: inline-block; min-width: 7em; }
+.md p + p { margin-top: 12px; }
+.md ul { list-style: none; }
+.md li { padding: 6px 0; border-bottom: 1px dashed var(--line); font-size: 14px; }
+.md li > strong:first-child { display: inline-block; min-width: 7em; }
+.md code { font-family: "IBM Plex Mono", monospace; font-size: .9em; }
 .json { font: inherit; font-size: 14px; white-space: pre-wrap; }
 .json .k { color: var(--acc); }
 .json .s { color: var(--warm); }

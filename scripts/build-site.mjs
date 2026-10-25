@@ -9,7 +9,7 @@ const origin = originIndex === -1 ? "https://csk200387.github.io/csk-portfolio" 
 if (!origin || !/^https:\/\//.test(origin)) throw new Error("Provide a trusted HTTPS origin.");
 const baseURL = new URL(origin);
 if (baseURL.username || baseURL.password || baseURL.search || baseURL.hash) throw new Error("Invalid origin.");
-const files = ["index.html", "css/styles.css", "js/main.js", "js/ascii-art.js", "js/portfolio-data.js", "js/signal-model.js", "public/og.png"];
+const files = ["index.html", "css/styles.css", "js/main.js", "js/ascii-art.js", "js/content.js", "js/signal-model.js", "content/about.md", "content/projects.md", "content/stack.md", "public/og.png"];
 const types = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "application/javascript; charset=utf-8", ".png": "image/png", ".md": "text/plain; charset=utf-8" };
 const assets = [];
 for (const file of files) {

@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { filterProjects } from "../js/signal-model.js";
-import { PROJECTS } from "../js/portfolio-data.js";
+import { parseProjects } from "../js/content.js";
+
+const PROJECTS = parseProjects(await readFile(new URL("../content/projects.md", import.meta.url), "utf8"));
 
 test("search handles Korean descriptions, English tags, case, and surrounding whitespace", () => {
   assert.deepEqual(filterProjects(PROJECTS, "all", "  tABULAr   csv  ").map(p => p.repo), ["tabular-lens"]);
