@@ -27,6 +27,8 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Noto+Sans+KR:wght@400;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/styles.css">
 <noscript><style>.art pre.fallback { visibility: visible; }</style></noscript>
+<!-- Hide terminal output from the first paint until main.js types it in; if main.js never starts, show it after 4s. -->
+<script>document.documentElement.classList.add("js"); setTimeout(() => document.querySelector(".blk.pending, .blk.done") || document.documentElement.classList.remove("js"), 4000);</script>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js"}}</script>
 </head>
 <body>

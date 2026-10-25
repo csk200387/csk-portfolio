@@ -64,7 +64,7 @@ button:active { transform: scale(var(--s97)); }
 .blk.done .caret { display: none; }
 @keyframes blink { 50% { opacity: 0; } }
 .out { transition: opacity .5s var(--ease-enter), transform .5s var(--ease-enter); }
-.blk.pending .out { opacity: 0; transform: translateY(8px); }
+.blk.pending .out, html.js .blk:not(.done) .out { opacity: 0; transform: translateY(8px); }
 
 /* SEED landing-style word reveal: each word lifts out of its own mask */
 .w { display: inline-block; overflow: hidden; vertical-align: bottom; }
