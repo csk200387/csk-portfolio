@@ -400,6 +400,8 @@ if (hasHover) {
   });
   document.documentElement.addEventListener("pointerleave", () => { hovered = null; cursor.dataset.mode = "off"; });
   document.documentElement.classList.add("has-cursor");
+  // Native drag-and-drop hands the cursor back to the OS; block it while the custom cursor is showing.
+  document.addEventListener("dragstart", event => { if (!motionOff) event.preventDefault(); });
 }
 
 // -------------------------------------------------------
